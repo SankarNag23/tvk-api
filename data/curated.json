@@ -1,18 +1,264 @@
 {
   "success": true,
-  "curatedAt": "2025-12-30T14:15:45.762Z",
+  "curatedAt": "2025-12-30T14:29:14.428Z",
   "news": {
-    "count": 0,
-    "items": []
+    "count": 20,
+    "items": [
+      {
+        "id": "news-1767104954428-0",
+        "title": "Palaniswami holds DMK regime responsible for the closure of 210 govt. schools",
+        "description": "",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/palaniswami-holds-dmk-regime-responsible-for-the-closure-of-210-govt-schools/article70450791.ece",
+        "image": "https://th-i.thgim.com/public/incoming/7u44v3/article70450904.ece/alternates/LANDSCAPE_1200/TH28-nearby2_GNGLQFC849K.3.jpg.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T23:30:00.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-1",
+        "title": "L. Murugan urges Union govt. to rename Tuticorin airport",
+        "description": "",
+        "url": "https://www.thehindu.com/news/cities/chennai/l-murugan-urges-union-govt-to-rename-tuticorin-airport/article70449242.ece",
+        "image": "",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T18:53:38.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-2",
+        "title": "T.N. spends more than ₹1,500 crore on high-end procedures under CM health insurance scheme",
+        "description": "",
+        "url": "https://www.thehindu.com/news/cities/chennai/state-spends-more-than-1500-cr-on-high-end-procedures-under-cmchis/article70450066.ece",
+        "image": "https://th-i.thgim.com/public/incoming/p7yzu5/article70452146.ece/alternates/LANDSCAPE_1200/IMG_iStock-1560100163_2_1_HIDT3IJB.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T18:52:20.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-3",
+        "title": "‘Dravidian Model’ govt 2.0 will implement improved schemes for women: CM Stalin",
+        "description": "The DMK’s election manifesto will have new schemes devised under the leadership of the party’s deputy general secretary and Parliamentary Party leader, Kanimozhi, he says in his address at the party’s west zone women’s conference, titled ‘Vellum Tamil Pengal’ ",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/dravidian-model-govt-20-will-implement-improved-schemes-for-women-cm-stalin/article70450360.ece",
+        "image": "https://th-i.thgim.com/public/incoming/adeq7n/article70450512.ece/alternates/LANDSCAPE_1200/9869_29_12_2025_20_13_14_2__DSC9978.JPG",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T17:04:14.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-4",
+        "title": "Mamata calls SIR 'AI-enabled scam', warns EC of gherao if valid voters removed",
+        "description": "    Mamata calls SIR AIenabled scam warns EC of gherao if valid voters removed ",
+        "url": "https://www.indiatoday.in/elections/assembly/story/mamata-banerjee-calls-sir-huge-scam-warns-of-ec-office-gherao-if-valid-voters-removed-2843978-2025-12-30?utm_source=rss",
+        "image": "",
+        "source": "India Today",
+        "publishedAt": "2025-12-30T12:43:18.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-5",
+        "title": "Mamata calls SIR 'AI-enabled scam', warns EC of gherao if valid voters removed",
+        "description": "    Mamata calls SIR AIenabled scam warns EC of gherao if valid voters removed ",
+        "url": "https://www.indiatoday.in/elections/assembly/story/mamata-banerjee-calls-sir-huge-scam-warns-of-ec-office-gherao-if-valid-voters-removed-2843978-2025-12-30?utm_source=rss",
+        "image": "",
+        "source": "India Today",
+        "publishedAt": "2025-12-30T12:43:18.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 70
+      },
+      {
+        "id": "news-1767104954428-6",
+        "title": "Madurai to enter Twin Cities Partnership with Camberley for cultural exchange and educational collaboration",
+        "description": "Camberley is the home town of Colonel John Pennycuick, the British engineer who built the Mullaperiyar Dam. Mayor of Surrey Heath Louise Ashbery will visit Madurai and Theni during the Pongal and sign the agreement with the Madurai Corporation Commissioner",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/madurai-to-enter-twin-cities-partnership-with-camberley-for-cultural-exchange-and-educational-collaboration/article70453469.ece",
+        "image": "https://th-i.thgim.com/public/news/national/tamil-nadu/afn3j6/article70453540.ece/alternates/LANDSCAPE_1200/368ec21a-ab1f-46ce-93b7-81a33e94aef0.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T14:03:33.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-7",
+        "title": "Vice-President to visit Golden Temple in Vellore on January 3",
+        "description": "Mr. Radhakrishan’s visit comes after President Droupadi Murmu, who visited the temple on December 17",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/vice-president-to-visit-golden-temple-in-vellore-on-january-3/article70453479.ece",
+        "image": "",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T13:32:59.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-8",
+        "title": "Nainar Nagenthran alleges dilution of Horticulture Department’s functioning",
+        "description": "The BJP’s Tamil Nadu president says the ruling DMK has “swindled” ₹141 crore through alleged scams in the department, and is trying to make it a wing of the Agriculture Department",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/nainar-nagenthran-alleges-dilution-of-horticulture-departments-functioning/article70452928.ece",
+        "image": "https://th-i.thgim.com/public/incoming/sxjwki/article70453066.ece/alternates/LANDSCAPE_1200/DSC_7747.JPG",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T13:05:02.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-9",
+        "title": "Amid govt. employees’ strike call, Pension Committee submits final report to T.N. CM Stalin",
+        "description": "The report has been submitted ahead of a strike planned from January 6, 2026, by the JACTTO-GEO, an umbrella organisation of State government employees and teachers, demanding the restoration of the OPS",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/amid-govt-employees-strike-call-pension-committee-submits-final-report-to-tn-cm-stalin/article70452617.ece",
+        "image": "https://th-i.thgim.com/public/news/national/tamil-nadu/mjnpo5/article70452692.ece/alternates/LANDSCAPE_1200/WhatsApp%20Image%202025-12-30%20at%2015.16.53.jpeg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T10:14:37.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-10",
+        "title": "Youth arrested for stalking, verbally abusing teenage girl near Samayanallur",
+        "description": "According to the police, the accused also threatened to harm her with acid",
+        "url": "https://www.thehindu.com/news/cities/Madurai/youth-arrested-for-stalking-verbally-abusing-teenage-girl-near-samayanallur/article70452051.ece",
+        "image": "https://th-i.thgim.com/public/incoming/phmrpn/article70452603.ece/alternates/LANDSCAPE_1200/iStock-1140960262.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T09:34:25.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-11",
+        "title": "President returns University of Madras Amendment Bill",
+        "description": "TN Assembly, which passed the Bill in April 2022, had sent it for Presidential assent, aiming to take control of the 168-year-old university which has been managing the affairs without a vice chancellor for over two years",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/president-returns-university-of-madras-amendment-bill/article70452377.ece",
+        "image": "https://th-i.thgim.com/public/incoming/3wrj4k/article70452404.ece/alternates/LANDSCAPE_1200/20251229110L.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T08:07:18.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-12",
+        "title": "‘Vaikunta Ekadasi’ draws huge turnout of devotees at Srirangam temple",
+        "description": "The processional deity Sri Namperumal, clad in gem-studded armour and garlands, passed through the ‘Paramapadha Vaasal’, marking the high point of the annual 22-day festival   ",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/vaikunta-ekadasi-draws-huge-turnout-of-devotees-at-srirangam-temple/article70452174.ece",
+        "image": "https://th-i.thgim.com/public/news/national/tamil-nadu/bxl2h4/article70452332.ece/alternates/LANDSCAPE_1200/WhatsApp%20Image%202025-12-30%20at%2011.25.41.jpeg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T07:25:38.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-13",
+        "title": "Technical glitch disrupts Chennai Metro Rail inter-corridor services on Green Line",
+        "description": "While inter-corridor services on the Green Line bound for the Airport have been stopped, services from Chennai Central to St. Thomas Mount and Blue Line services from Wimco Nagar to the Airport are operating normally as per the weekday schedule, CMRL said in a post on X",
+        "url": "https://www.thehindu.com/news/cities/chennai/technical-glitch-disrupts-chennai-metro-rail-services-on-green-line/article70452149.ece",
+        "image": "https://th-i.thgim.com/public/incoming/uqv4oq/article70452208.ece/alternates/LANDSCAPE_1200/CMRL%20KOYABADU.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T06:37:29.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-14",
+        "title": "Three fishermen from Rameswaram arrested by Sri Lankan Navy; trawler impounded",
+        "description": "V.P. Jesu Raja, leader of a fishermen association, condemned the arrest, stating that the persistent appeals from Tamil Nadu’s fishermen had been ignored",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/three-fishermen-from-rameswaram-arrested-by-sri-lankan-navy-trawler-impounded/article70451866.ece",
+        "image": "https://th-i.thgim.com/public/incoming/kmhhom/article70452048.ece/alternates/LANDSCAPE_1200/10217_15_10_2025_21_22_54_4_IMG_20251015_WA0318.JPG",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-30T05:36:00.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-15",
+        "title": "Engineering domains evolving rapidly, choose courses with relevance, speakers tell students at webinar",
+        "description": "Students must think four years ahead when choosing courses, the experts said",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/engineering-domains-evolving-rapidly-choose-courses-with-relevance-speakers-tell-students-at-webinar/article70450167.ece",
+        "image": "https://th-i.thgim.com/public/news/national/x6smn4/article70450504.ece/alternates/LANDSCAPE_1200/Sastrea_Logo_600x600%201.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T23:14:00.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-16",
+        "title": "Collection of short stories that strikes a chord with music lovers",
+        "description": "",
+        "url": "https://www.thehindu.com/books/collection-of-short-stories-that-strikes-a-chord-with-music-lovers/article70450016.ece",
+        "image": "https://th-i.thgim.com/public/news/national/yf0a2r/article70450017.ece/alternates/LANDSCAPE_1200/kolappan%20music.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T18:54:56.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-17",
+        "title": "Parties that join the NDA alliance will win the T.N. Assembly elections : Nainar Nagenthran",
+        "description": "",
+        "url": "https://www.thehindu.com/news/cities/Coimbatore/parties-that-join-the-nda-alliance-will-win-the-tn-assembly-elections-nainar-nagenthran/article70450501.ece",
+        "image": "",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T16:02:59.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-18",
+        "title": "Tamil Nadu government has failed on several fronts: Tamilisai",
+        "description": "",
+        "url": "https://www.thehindu.com/news/cities/Coimbatore/tamil-nadu-government-has-failed-on-several-fronts-tamilisai/article70449724.ece",
+        "image": "https://th-i.thgim.com/public/incoming/fkqo3r/article70450143.ece/alternates/LANDSCAPE_1200/IMG_TAMILISAI_SOUNDARARA_2_1_83DGG84C.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T14:24:28.000Z",
+        "language": "en",
+        "category": "general",
+        "relevanceScore": 50
+      },
+      {
+        "id": "news-1767104954428-19",
+        "title": "Union Minister of State for Coal chairs review meeting on NLCIL’s operational performance and growth plans",
+        "description": "Satish Chandra Dubey, who was on a two-day visit to NLCIL on December 27 and 28, lauded the company’s significant contributions to the nation’s energy security and economic development",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/union-minister-of-state-for-coal-chairs-review-meeting-on-nlcils-operational-performance-and-growth-plans/article70449061.ece",
+        "image": "https://th-i.thgim.com/public/news/national/tamil-nadu/3b381d/article70449538.ece/alternates/LANDSCAPE_1200/thumbnail_Photo%202.jpg",
+        "source": "The Hindu TN",
+        "publishedAt": "2025-12-29T12:13:00.000Z",
+        "language": "en",
+        "category": "rally",
+        "relevanceScore": 50
+      }
+    ]
   },
   "media": {
     "count": 0,
     "items": []
   },
   "stats": {
-    "totalRSSFetched": 0,
+    "totalRSSFetched": 80,
     "totalVideosFetched": 0,
-    "newsAfterFiltering": 0,
+    "newsAfterFiltering": 20,
     "mediaAfterFiltering": 0
+  },
+  "debug": {
+    "fetchErrors": [
+      "News18 Politics: HTTP 403 Forbidden"
+    ]
   }
 }
