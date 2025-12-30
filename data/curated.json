@@ -1,0 +1,129 @@
+{
+  "curatedAt": "2024-12-30T00:00:00Z",
+  "news": {
+    "count": 5,
+    "items": [
+      {
+        "id": "news-init-1",
+        "title": "TVK Leader Vijay to address rally in Erode",
+        "description": "Tamilaga Vettri Kazhagam president and actor Vijay is set to address a major public rally in Erode district as part of his statewide tour.",
+        "url": "https://www.thehindu.com/news/national/tamil-nadu/",
+        "source": "The Hindu",
+        "publishedAt": "2024-12-18T00:00:00Z",
+        "language": "en",
+        "category": "rally",
+        "relevanceScore": 95
+      },
+      {
+        "id": "news-init-2",
+        "title": "Sengottaiyan appointed TVK chief organizer for western districts",
+        "description": "Former AIADMK leader KA Sengottaiyan has been appointed as the chief organizer for Erode, Coimbatore, Tirupur and Nilgiris districts.",
+        "url": "https://www.deccanchronicle.com/",
+        "source": "Deccan Chronicle",
+        "publishedAt": "2024-11-27T00:00:00Z",
+        "language": "en",
+        "category": "announcement",
+        "relevanceScore": 92
+      },
+      {
+        "id": "news-init-3",
+        "title": "TVK confirms solo contest in 2026 Tamil Nadu elections",
+        "description": "TVK General Secretary N Anand ruled out any alliance with AIADMK, confirming the party will contest independently in 2026.",
+        "url": "https://www.newkerala.com/",
+        "source": "New Kerala",
+        "publishedAt": "2024-12-05T00:00:00Z",
+        "language": "en",
+        "category": "announcement",
+        "relevanceScore": 90
+      },
+      {
+        "id": "news-init-4",
+        "title": "விஜய் ஈரோடு பேரணி - திமுக தீய சக்தி என கடும் தாக்கு",
+        "description": "ஈரோடு உரையில், விஜய் திமுகவை தீய சக்தி என்றும் TVK-ஐ நல்ல சக்தி என்றும் குறிப்பிட்டார்.",
+        "url": "https://www.thestatesman.com/",
+        "source": "The Statesman",
+        "publishedAt": "2024-12-18T00:00:00Z",
+        "language": "ta",
+        "category": "rally",
+        "relevanceScore": 95
+      },
+      {
+        "id": "news-init-5",
+        "title": "TVK crosses 50 lakh members milestone",
+        "description": "Tamilaga Vettri Kazhagam has crossed 50 lakh registered members, becoming one of the fastest growing political parties in Tamil Nadu.",
+        "url": "https://www.thenewsminute.com/",
+        "source": "The News Minute",
+        "publishedAt": "2024-10-28T00:00:00Z",
+        "language": "en",
+        "category": "announcement",
+        "relevanceScore": 88
+      }
+    ]
+  },
+  "media": {
+    "count": 5,
+    "items": [
+      {
+        "id": "vid-init-1",
+        "type": "video",
+        "url": "https://www.youtube.com/watch?v=l_nUecO8oKE",
+        "thumbnail": "https://img.youtube.com/vi/l_nUecO8oKE/hqdefault.jpg",
+        "title": "Vijay Full Speech - Vikravandi Rally 2024",
+        "source": "IndiaGlitz",
+        "publishedAt": "2024-10-27T00:00:00Z",
+        "embedUrl": "https://www.youtube.com/embed/l_nUecO8oKE",
+        "relevanceScore": 98
+      },
+      {
+        "id": "vid-init-2",
+        "type": "video",
+        "url": "https://www.youtube.com/watch?v=P6Tql9NJeHs",
+        "thumbnail": "https://img.youtube.com/vi/P6Tql9NJeHs/hqdefault.jpg",
+        "title": "TVK Flag Hoisting Ceremony - August 2024",
+        "source": "News18 Tamil",
+        "publishedAt": "2024-08-22T00:00:00Z",
+        "embedUrl": "https://www.youtube.com/embed/P6Tql9NJeHs",
+        "relevanceScore": 95
+      },
+      {
+        "id": "vid-init-3",
+        "type": "video",
+        "url": "https://www.youtube.com/watch?v=xHV3APMN9lA",
+        "thumbnail": "https://img.youtube.com/vi/xHV3APMN9lA/hqdefault.jpg",
+        "title": "Vijay Erode Rally Speech - December 2024",
+        "source": "Puthiya Thalaimurai",
+        "publishedAt": "2024-12-18T00:00:00Z",
+        "embedUrl": "https://www.youtube.com/embed/xHV3APMN9lA",
+        "relevanceScore": 96
+      },
+      {
+        "id": "vid-init-4",
+        "type": "video",
+        "url": "https://www.youtube.com/watch?v=jCWOp3PXhFA",
+        "thumbnail": "https://img.youtube.com/vi/jCWOp3PXhFA/hqdefault.jpg",
+        "title": "TVK Party Anthem - Official Video",
+        "source": "TVK Official",
+        "publishedAt": "2024-08-22T10:00:00Z",
+        "embedUrl": "https://www.youtube.com/embed/jCWOp3PXhFA",
+        "relevanceScore": 92
+      },
+      {
+        "id": "vid-init-5",
+        "type": "video",
+        "url": "https://www.youtube.com/watch?v=1K3dPqGpKnA",
+        "thumbnail": "https://img.youtube.com/vi/1K3dPqGpKnA/hqdefault.jpg",
+        "title": "Sengottaiyan Joins TVK - Live Coverage",
+        "source": "Polimer News",
+        "publishedAt": "2024-11-27T00:00:00Z",
+        "embedUrl": "https://www.youtube.com/embed/1K3dPqGpKnA",
+        "relevanceScore": 90
+      }
+    ]
+  },
+  "stats": {
+    "totalRSSFetched": 0,
+    "totalVideosFetched": 0,
+    "newsAfterFiltering": 5,
+    "mediaAfterFiltering": 5
+  }
+}

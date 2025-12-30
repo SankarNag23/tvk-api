@@ -1,0 +1,20 @@
+{
+  "name": "tvk-api",
+  "version": "1.0.0",
+  "description": "TVK API - AI Curation & Heavy Endpoints",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "tsc",
+    "curate": "npx ts-node scripts/curate.ts"
+  },
+  "dependencies": {
+    "@vercel/node": "^3.0.0",
+    "rss-parser": "^3.13.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  }
+}

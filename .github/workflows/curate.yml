@@ -1,0 +1,81 @@
+name: AI Content Curation
+
+on:
+  schedule:
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  API_BASE_URL: https://tvk-api.vercel.app
+
+jobs:
+  curate-content:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run AI Curation
+        id: curate
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: |
+          echo "Running AI curation agent..."
+
+          # Call the curation API and save response
+          RESPONSE=$(curl -s -X POST "${{ env.API_BASE_URL }}/api/curate" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
+            --max-time 120)
+
+          echo "API Response received"
+
+          # Check if response is valid JSON with success
+          if echo "$RESPONSE" | jq -e '.success == true' > /dev/null 2>&1; then
+            echo "Curation successful!"
+            echo "$RESPONSE" | jq '.' > data/curated.json
+            echo "curated=true" >> $GITHUB_OUTPUT
+          else
+            echo "Curation failed or returned error"
+            echo "$RESPONSE"
+            echo "curated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit curated content
+        if: steps.curate.outputs.curated == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "TVK Curation Bot"
+
+          # Check if there are changes
+          if git diff --quiet data/curated.json; then
+            echo "No changes to curated content"
+          else
+            git add data/curated.json
+            git commit -m "chore: Update curated content $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+            Auto-curated by AI agent
+            - News items: $(jq '.news.count' data/curated.json)
+            - Media items: $(jq '.media.count' data/curated.json)"
+            git push
+            echo "Curated content committed and pushed!"
+          fi
+
+      - name: Log completion
+        run: |
+          echo "Curation workflow completed at $(date -u)"
+          echo "News count: $(jq '.news.count' data/curated.json 2>/dev/null || echo 'N/A')"
+          echo "Media count: $(jq '.media.count' data/curated.json 2>/dev/null || echo 'N/A')"
