@@ -71,22 +71,17 @@ const TAMIL_NEWS_CHANNELS = [
   { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' }, // Corrected ID
 ]
 
-// TVK-related Twitter/X accounts and hashtags
+// TVK-related Twitter/X accounts (official and fan accounts)
 const TVK_TWITTER_ACCOUNTS = [
-  'tvaborncafe',      // TVK supporter account
-  'TVK_Official_',    // TVK official (if exists)
-  'acaborncafe',      // Vijay fan club
+  'TVKVijayHQ',       // Official TVK Vijay account
+  'TVKVijayTrends',   // TVK Trends account
 ]
 
-const TVK_TWITTER_HASHTAGS = [
-  'TVK', 'TamilagaVettriKazhagam', 'விஜய்', 'Vijay', 'Thalapathy'
-]
-
-// Nitter instances for Twitter RSS (fallback list)
-const NITTER_INSTANCES = [
-  'nitter.poast.org',
-  'nitter.privacydev.net',
-  'nitter.net',
+// RSSHub and alternative Twitter RSS services
+const TWITTER_RSS_SERVICES = [
+  { base: 'https://rsshub.app/twitter/user', format: 'rsshub' },
+  { base: 'https://nitter.poast.org', format: 'nitter' },
+  { base: 'https://nitter.privacydev.net', format: 'nitter' },
 ]
 
 // Fetch and parse RSS feeds
@@ -156,35 +151,47 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
   return allItems
 }
 
-// Fetch Twitter/X posts via Nitter RSS (NO API KEY NEEDED)
+// Fetch Twitter/X posts via RSSHub or Nitter (NO API KEY NEEDED)
 async function fetchTwitterPosts(fetchErrors: string[]): Promise<TweetItem[]> {
   const tweets: TweetItem[] = []
   const seenIds = new Set<string>()
 
-  // Try each Nitter instance until one works
-  for (const instance of NITTER_INSTANCES) {
-    let instanceWorking = false
+  // Try each RSS service
+  for (const service of TWITTER_RSS_SERVICES) {
+    let serviceWorking = false
 
-    // Fetch from TVK-related accounts
     for (const account of TVK_TWITTER_ACCOUNTS) {
       try {
-        const rssUrl = `https://${instance}/${account}/rss`
-        console.log(`Fetching Twitter RSS: @${account} from ${instance}`)
+        // Build URL based on service format
+        let rssUrl: string
+        if (service.format === 'rsshub') {
+          rssUrl = `${service.base}/${account}`
+        } else {
+          rssUrl = `${service.base}/${account}/rss`
+        }
+
+        console.log(`Fetching Twitter RSS: @${account} from ${service.base}`)
 
         const response = await fetch(rssUrl, {
-          headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' },
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; TVK-Bot/1.0)',
+            'Accept': 'application/rss+xml, application/xml, text/xml',
+          },
         })
 
         if (!response.ok) {
-          if (response.status === 404) continue // Account doesn't exist
+          console.log(`Twitter @${account}: HTTP ${response.status}`)
           continue
         }
 
-        instanceWorking = true
+        serviceWorking = true
         const text = await response.text()
-        const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
 
-        for (const item of items.slice(0, 10)) {
+        // Parse RSS items
+        const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
+        console.log(`@${account}: Found ${items.length} tweets`)
+
+        for (const item of items.slice(0, 15)) {
           const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1]
                      || item.match(/<title>([^<]*)<\/title>/)?.[1] || ''
           const link = item.match(/<link>([^<]+)<\/link>/)?.[1] || ''
@@ -193,11 +200,11 @@ async function fetchTwitterPosts(fetchErrors: string[]): Promise<TweetItem[]> {
                            || item.match(/<description>([^<]*)<\/description>/)?.[1] || ''
 
           // Extract tweet ID from link
-          const tweetId = link.match(/status\/(\d+)/)?.[1]
+          const tweetId = link.match(/status\/(\d+)/)?.[1] || link.match(/\/(\d{15,})/)?.[1]
           if (!tweetId || seenIds.has(tweetId)) continue
           seenIds.add(tweetId)
 
-          // Extract media URLs from description
+          // Extract media URLs
           const mediaUrls = description.match(/https:\/\/[^\s"<>]+\.(jpg|jpeg|png|gif|mp4)/gi) || []
 
           // Safe date parsing
@@ -210,39 +217,29 @@ async function fetchTwitterPosts(fetchErrors: string[]): Promise<TweetItem[]> {
 
           tweets.push({
             id: tweetId,
-            text: title.replace(/<[^>]*>/g, '').trim().substring(0, 280),
+            text: title.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim().substring(0, 280),
             author: account,
             authorHandle: `@${account}`,
-            url: `https://twitter.com/${account}/status/${tweetId}`,
+            url: `https://x.com/${account}/status/${tweetId}`,
             publishedAt: parsedDate,
             media: mediaUrls.length > 0 ? mediaUrls : undefined,
           })
         }
       } catch (err) {
-        console.error(`Twitter @${account}: ${err instanceof Error ? err.message : 'Error'}`)
+        const errMsg = err instanceof Error ? err.message : 'Error'
+        console.error(`Twitter @${account}: ${errMsg}`)
+        fetchErrors.push(`Twitter @${account}: ${errMsg}`)
       }
     }
 
-    // If this instance worked, don't try others
-    if (instanceWorking) break
-  }
-
-  // Also try searching for TVK hashtag via Google News
-  try {
-    const hashtagRss = `https://news.google.com/rss/search?q=TVK+Vijay+twitter&hl=en&gl=IN&ceid=IN:en`
-    const response = await fetch(hashtagRss, {
-      headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
-    })
-    if (response.ok) {
-      const text = await response.text()
-      const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
-      console.log(`Found ${items.length} Twitter-related news items`)
+    // If this service worked, use it
+    if (serviceWorking && tweets.length > 0) {
+      console.log(`Using ${service.base} - got ${tweets.length} tweets`)
+      break
     }
-  } catch (err) {
-    console.error('Twitter hashtag search failed:', err)
   }
 
-  console.log(`Fetched ${tweets.length} Twitter posts`)
+  console.log(`Fetched ${tweets.length} Twitter posts total`)
   return tweets
 }
 
