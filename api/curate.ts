@@ -35,12 +35,13 @@ const TVK_KEYWORDS = [
   'Thalapathy Vijay political', 'Actor Vijay party'
 ]
 
-// Trusted news sources
+// Trusted news sources - Tamil Nadu focused
 const NEWS_SOURCES = [
-  { name: 'The Hindu', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
-  { name: 'Times of India', rss: 'https://timesofindia.indiatimes.com/rssfeeds/1986094788.cms' },
+  { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
+  { name: 'The Hindu Politics', rss: 'https://www.thehindu.com/news/national/feeder/default.rss' },
   { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
-  { name: 'News18', rss: 'https://www.news18.com/rss/politics.xml' },
+  { name: 'News18 Politics', rss: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
+  { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home' },
 ]
 
 // Fetch and parse RSS feeds
@@ -70,16 +71,25 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
       console.log(`${source.name}: Found ${items.length} items`)
 
       for (const item of items.slice(0, 20)) {
+        // Extract fields - check CDATA patterns first
         const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1]
-                   || item.match(/<title>(.*?)<\/title>/)?.[1] || ''
+                   || item.match(/<title>([^<]*)<\/title>/)?.[1] || ''
         const description = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/)?.[1]
-                         || item.match(/<description>(.*?)<\/description>/)?.[1] || ''
-        const link = item.match(/<link>(.*?)<\/link>/)?.[1]
-                   || item.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/)?.[1] || ''
-        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]
-                     || item.match(/<pubDate><!\[CDATA\[(.*?)\]\]><\/pubDate>/)?.[1] || ''
+                         || item.match(/<description>([^<]*)<\/description>/)?.[1] || ''
+        const link = item.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/)?.[1]
+                   || item.match(/<link>([^<]+)<\/link>/)?.[1] || ''
+        const pubDate = item.match(/<pubDate><!\[CDATA\[(.*?)\]\]><\/pubDate>/)?.[1]
+                     || item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1] || ''
         const image = item.match(/<media:content[^>]*url="([^"]+)"/)?.[1]
                    || item.match(/<enclosure[^>]*url="([^"]+)"/)?.[1] || ''
+
+        // Safe date parsing
+        let parsedDate: string
+        try {
+          parsedDate = pubDate ? new Date(pubDate).toISOString() : new Date().toISOString()
+        } catch {
+          parsedDate = new Date().toISOString()
+        }
 
         allItems.push({
           title: title.replace(/<[^>]*>/g, '').trim(),
@@ -87,7 +97,7 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
           url: link.trim(),
           image,
           source: source.name,
-          pubDate: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+          pubDate: parsedDate,
         })
       }
     } catch (err) {
