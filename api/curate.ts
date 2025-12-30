@@ -44,26 +44,40 @@ const NEWS_SOURCES = [
 ]
 
 // Fetch and parse RSS feeds
-async function fetchRSSNews(): Promise<any[]> {
+async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
   const allItems: any[] = []
 
   for (const source of NEWS_SOURCES) {
     try {
+      console.log(`Fetching RSS from ${source.name}: ${source.rss}`)
       const response = await fetch(source.rss, {
-        headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
+        headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' },
+        redirect: 'follow'
       })
+
+      if (!response.ok) {
+        const errorMsg = `${source.name}: HTTP ${response.status} ${response.statusText}`
+        console.error(errorMsg)
+        fetchErrors.push(errorMsg)
+        continue
+      }
+
       const text = await response.text()
+      console.log(`${source.name}: Received ${text.length} bytes`)
 
       // Simple RSS parsing
       const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
+      console.log(`${source.name}: Found ${items.length} items`)
 
       for (const item of items.slice(0, 20)) {
         const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1]
                    || item.match(/<title>(.*?)<\/title>/)?.[1] || ''
         const description = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/)?.[1]
                          || item.match(/<description>(.*?)<\/description>/)?.[1] || ''
-        const link = item.match(/<link>(.*?)<\/link>/)?.[1] || ''
-        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] || ''
+        const link = item.match(/<link>(.*?)<\/link>/)?.[1]
+                   || item.match(/<link><!\[CDATA\[(.*?)\]\]><\/link>/)?.[1] || ''
+        const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]
+                     || item.match(/<pubDate><!\[CDATA\[(.*?)\]\]><\/pubDate>/)?.[1] || ''
         const image = item.match(/<media:content[^>]*url="([^"]+)"/)?.[1]
                    || item.match(/<enclosure[^>]*url="([^"]+)"/)?.[1] || ''
 
@@ -77,7 +91,9 @@ async function fetchRSSNews(): Promise<any[]> {
         })
       }
     } catch (err) {
+      const errorMsg = `${source.name}: ${err instanceof Error ? err.message : 'Unknown error'}`
       console.error(`Failed to fetch ${source.name}:`, err)
+      fetchErrors.push(errorMsg)
     }
   }
 
@@ -225,9 +241,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     console.log('Starting AI curation...')
 
+    // Track errors for debugging
+    const fetchErrors: string[] = []
+
     // 1. Fetch news from RSS feeds
     console.log('Fetching RSS news...')
-    const rssNews = await fetchRSSNews()
+    const rssNews = await fetchRSSNews(fetchErrors)
     console.log(`Fetched ${rssNews.length} RSS items`)
 
     // 2. Fetch YouTube videos (if API key available)
@@ -299,6 +318,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         totalVideosFetched: videos.length,
         newsAfterFiltering: relevantNews.length,
         mediaAfterFiltering: relevantMedia.length,
+      },
+      debug: {
+        fetchErrors: fetchErrors.length > 0 ? fetchErrors : undefined,
       }
     }
 
