@@ -37,13 +37,23 @@ const TVK_KEYWORDS = [
   'TVK rally', 'TVK meeting', 'Vijay speech'
 ]
 
-// Trusted news sources - Tamil Nadu focused
-const NEWS_SOURCES = [
-  { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
-  { name: 'The Hindu Politics', rss: 'https://www.thehindu.com/news/national/feeder/default.rss' },
-  { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
-  { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home' },
+// Trusted news sources - Tamil Nadu focused (English)
+const NEWS_SOURCES_EN = [
+  { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss', lang: 'en' },
+  { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories', lang: 'en' },
+  { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home', lang: 'en' },
 ]
+
+// Tamil language news sources
+const NEWS_SOURCES_TA = [
+  { name: 'Dinamalar', rss: 'https://www.dinamalar.com/rss_feed.asp?cat=g11', lang: 'ta' },
+  { name: 'Vikatan', rss: 'https://www.vikatan.com/rss/news.xml', lang: 'ta' },
+  { name: 'Tamil Hindu', rss: 'https://www.hindutamil.in/feeds/tamilnadu.xml', lang: 'ta' },
+  { name: 'Puthiya Thalaimurai', rss: 'https://www.puthiyathalaimurai.com/feeds/news.xml', lang: 'ta' },
+]
+
+// Combined news sources
+const NEWS_SOURCES = [...NEWS_SOURCES_EN, ...NEWS_SOURCES_TA]
 
 // Tamil News YouTube channels (verified working RSS feeds - NO API KEY NEEDED)
 const TAMIL_NEWS_CHANNELS = [
@@ -107,6 +117,7 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
           image,
           source: source.name,
           pubDate: parsedDate,
+          sourceLang: (source as any).lang || 'en', // Pass through source language
         })
       }
     } catch (err) {
@@ -231,19 +242,24 @@ async function scoreWithAI(items: any[], groqKey: string): Promise<any[]> {
   for (let i = 0; i < items.length; i += 5) {
     const batch = items.slice(i, i + 5)
 
-    const prompt = `You are a TVK (Tamilaga Vettri Kazhagam) news curator. Score each item's relevance to TVK political party (0-100).
+    const prompt = `You are a TVK (Tamilaga Vettri Kazhagam) fan page curator. Score each item for POSITIVE relevance to TVK party (0-100).
 
 TVK is Actor Vijay's political party in Tamil Nadu, India. Founded Feb 2024.
 Key figures: Vijay (President), Bussy Anand/N. Anand (General Secretary), Sengottaiyan.
 
-Score criteria - BE GENEROUS for Tamil Nadu political news:
-- 95-100: Directly mentions TVK, Vijay's political activities, Bussy Anand, Sengottaiyan
-- 80-94: Tamil Nadu state politics, elections, DMK, AIADMK, political rallies
-- 60-79: Tamil Nadu news that affects politics or governance
-- 40-59: General Tamil Nadu news, development, economy
-- 0-39: Completely unrelated (sports, entertainment, other states)
+SCORING CRITERIA - Focus on POSITIVE news:
+- 95-100: POSITIVE news about TVK, Vijay, Bussy Anand, Sengottaiyan (rallies, speeches, achievements)
+- 85-94: Neutral news mentioning TVK/Vijay political activities
+- 70-84: Positive Tamil Nadu political news, election news
+- 50-69: General Tamil Nadu development/governance news
+- 30-49: Neutral Tamil Nadu news
+- 0-29: NEGATIVE/critical news about TVK OR unrelated content
 
-IMPORTANT: Score Tamil Nadu political news HIGH (70+) even if TVK not mentioned directly.
+IMPORTANT RULES:
+1. BOOST positive/supportive TVK news to 95+
+2. PENALIZE negative/critical news about TVK, Vijay to below 30
+3. News about TVK rallies, meetings, Vijay speeches = 95+
+4. News criticizing TVK or Vijay = 0-20
 
 Items to score:
 ${batch.map((item, idx) => `${idx + 1}. "${item.title}" - ${item.description?.substring(0, 100) || 'No description'}`).join('\n')}
@@ -370,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         image: item.image,
         source: item.source,
         publishedAt: item.pubDate,
-        language: detectLanguage(item.title),
+        language: item.sourceLang || detectLanguage(item.title),
         category: categorizeNews(item),
         relevanceScore: item.relevanceScore,
       }))
