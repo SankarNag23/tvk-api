@@ -45,18 +45,12 @@ const NEWS_SOURCES = [
   { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home' },
 ]
 
-// YouTube channels to fetch videos from (RSS feeds - NO API KEY NEEDED)
-const YOUTUBE_CHANNELS = [
-  { name: 'TVK Official', channelId: 'UC9RdE2udmP5OgKMLHhI0j0g' }, // TVK official channel if exists
-  { name: 'Vijay TVK', channelId: 'UCqVEHtQoXHmUCfJ-9smpTSg' }, // Popular Tamil news
-]
-
-// YouTube search RSS (via invidious instances for no API key)
-const YOUTUBE_SEARCH_QUERIES = [
-  'TVK Tamilaga Vettri Kazhagam',
-  'Vijay political speech 2025',
-  'TVK rally meeting',
-  'Bussy Anand TVK',
+// Tamil News YouTube channels (verified working RSS feeds - NO API KEY NEEDED)
+const TAMIL_NEWS_CHANNELS = [
+  { name: 'Thanthi TV', channelId: 'UC-JFyL0zDFOsPMpuWu39rPA' },
+  { name: 'Sun News', channelId: 'UCYlh4lH762HvHt6mmiecyWQ' },
+  { name: 'Polimer News', channelId: 'UCfW_DB8FUEqSCeX6vCfVjNw' },
+  { name: 'Jaya Plus', channelId: 'UC4cU_F4YKKzrM4OY0y1oA6Q' },
 ]
 
 // Fetch and parse RSS feeds
@@ -130,8 +124,14 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
   const videos: any[] = []
   const seenIds = new Set<string>()
 
-  // Fetch from YouTube channel RSS feeds
-  for (const channel of YOUTUBE_CHANNELS) {
+  // Keywords to filter TVK-related videos
+  const tvkKeywords = [
+    'tvk', 'vijay', 'tamilaga vettri', 'bussy', 'sengottaiyan',
+    'thalapathy', 'விஜய்', 'தமிழக வெற்றி', 'அரசியல்'
+  ]
+
+  // Fetch from Tamil News YouTube channels
+  for (const channel of TAMIL_NEWS_CHANNELS) {
     try {
       const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`
       console.log(`Fetching YouTube RSS: ${channel.name}`)
@@ -146,62 +146,22 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
 
       const text = await response.text()
       const entries = text.match(/<entry>([\s\S]*?)<\/entry>/g) || []
+      console.log(`${channel.name}: Found ${entries.length} videos`)
 
-      for (const entry of entries.slice(0, 10)) {
-        const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
-        if (!videoId || seenIds.has(videoId)) continue
-        seenIds.add(videoId)
-
-        const title = entry.match(/<title>([^<]*)<\/title>/)?.[1]
-                   || entry.match(/<media:title>([^<]*)<\/media:title>/)?.[1] || ''
-        const published = entry.match(/<published>([^<]+)<\/published>/)?.[1] || ''
-        const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
-
-        videos.push({
-          id: videoId,
-          title: title.trim(),
-          description: '',
-          thumbnail,
-          publishedAt: published,
-          channelTitle: channel.name,
-        })
-      }
-    } catch (err) {
-      fetchErrors.push(`YouTube ${channel.name}: ${err instanceof Error ? err.message : 'Unknown error'}`)
-    }
-  }
-
-  // Also try to fetch trending TVK videos via scraping popular Tamil news channels
-  const tamilNewsChannels = [
-    { name: 'Thanthi TV', channelId: 'UCT6P1fgX1SNfqf0JQ6fAgVg' },
-    { name: 'Puthiya Thalaimurai', channelId: 'UCmfY8uca1VdNdX5Ea5YJT6A' },
-    { name: 'News7 Tamil', channelId: 'UCfIqZmrPOxgnoYVWmBwCwzA' },
-  ]
-
-  for (const channel of tamilNewsChannels) {
-    try {
-      const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`
-      const response = await fetch(rssUrl, {
-        headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
-      })
-
-      if (!response.ok) continue
-
-      const text = await response.text()
-      const entries = text.match(/<entry>([\s\S]*?)<\/entry>/g) || []
-
-      for (const entry of entries.slice(0, 15)) {
+      for (const entry of entries.slice(0, 20)) {
         const title = entry.match(/<title>([^<]*)<\/title>/)?.[1] || ''
         const titleLower = title.toLowerCase()
 
-        // Only include TVK-related videos
-        if (!titleLower.includes('tvk') &&
-            !titleLower.includes('vijay') &&
-            !titleLower.includes('tamilaga vettri') &&
-            !titleLower.includes('bussy') &&
-            !titleLower.includes('sengottaiyan')) {
-          continue
-        }
+        // Filter for TVK-related or Tamil Nadu political videos
+        const isTVKRelated = tvkKeywords.some(kw => titleLower.includes(kw))
+        const isPolitical = titleLower.includes('politi') ||
+                          titleLower.includes('election') ||
+                          titleLower.includes('dmk') ||
+                          titleLower.includes('aiadmk') ||
+                          titleLower.includes('assembly') ||
+                          titleLower.includes('மாநில')
+
+        if (!isTVKRelated && !isPolitical) continue
 
         const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
         if (!videoId || seenIds.has(videoId)) continue
@@ -217,12 +177,23 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
           thumbnail,
           publishedAt: published,
           channelTitle: channel.name,
+          // Boost TVK-specific videos
+          isTVKSpecific: isTVKRelated,
         })
       }
     } catch (err) {
-      // Silently skip errors for news channel fetching
+      const errMsg = err instanceof Error ? err.message : 'Unknown error'
+      console.error(`YouTube ${channel.name}: ${errMsg}`)
+      fetchErrors.push(`YouTube ${channel.name}: ${errMsg}`)
     }
   }
+
+  // Sort to prioritize TVK-specific videos
+  videos.sort((a, b) => {
+    if (a.isTVKSpecific && !b.isTVKSpecific) return -1
+    if (!a.isTVKSpecific && b.isTVKSpecific) return 1
+    return 0
+  })
 
   console.log(`Fetched ${videos.length} YouTube videos via RSS`)
   return videos
