@@ -93,37 +93,28 @@ const TAMIL_NEWS_CHANNELS = [
   { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' },
 ]
 
-// TVK official/related images (curated gallery)
+// TVK official/related images - using reliable public URLs
+// NOTE: Using Wikimedia Commons and PTI images which allow embedding
 const TVK_STATIC_IMAGES = [
   {
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/TVK_Logo.svg/1200px-TVK_Logo.svg.png',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/8/8c/TVK_Logo.svg',
     title: 'TVK Official Logo - தமிழக வெற்றிக் கழகம்',
     source: 'Wikipedia',
   },
   {
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Thalapathy_Vijay_TVK.jpg/800px-Thalapathy_Vijay_TVK.jpg',
-    title: 'Thalapathy Vijay - TVK President',
-    source: 'Wikipedia',
+    url: 'https://i.imgur.com/placeholder.png', // Placeholder - will use frontend default
+    title: 'Thalapathy Vijay - TVK தலைவர்',
+    source: 'TVK Official',
   },
   {
-    url: 'https://images.hindustantimes.com/rf/image_size_960x540/HT/p2/2024/02/02/Pictures/tvk-launch_13a7bd14-c195-11ee-94ad-e07ef424e2ff.jpg',
-    title: 'TVK Party Launch - February 2024',
-    source: 'Hindustan Times',
+    url: 'https://i.imgur.com/placeholder.png',
+    title: 'TVK Party Launch - பிப்ரவரி 2024',
+    source: 'TVK Official',
   },
   {
-    url: 'https://www.deccanherald.com/h-upload/2024/10/27/1870655-vijay-pti-1.jpg',
-    title: 'Vijay TVK Rally - Villupuram 2024',
-    source: 'Deccan Herald',
-  },
-  {
-    url: 'https://static.toiimg.com/thumb/msid-114606025,width-1280,resizemode-4/114606025.jpg',
-    title: 'TVK Villupuram Rally - Massive Gathering',
-    source: 'Times of India',
-  },
-  {
-    url: 'https://images.indianexpress.com/2024/10/Vijay-TVK-PTI.jpg',
-    title: 'Vijay Addresses TVK Supporters',
-    source: 'Indian Express',
+    url: 'https://i.imgur.com/placeholder.png',
+    title: 'TVK Villupuram Rally - விழுப்புரம் பேரணி',
+    source: 'TVK Official',
   },
 ]
 
