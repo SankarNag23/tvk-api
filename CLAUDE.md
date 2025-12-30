@@ -81,7 +81,7 @@ GROQ_API_KEY=<your groq api key>
 YOUTUBE_API_KEY=<youtube data api v3 key>
 FISH_AUDIO_API_KEY=<fish audio api key - primary for Vijay's cloned voice>
 ELEVENLABS_API_KEY=<elevenlabs api key - fallback TTS>
-VIJAY_VOICE_ID=4415218e21374deeadf8b11e49a68368  # Vijay's cloned voice on Fish Audio
+VIJAY_VOICE_ID=9c2a7167c68e4a1bb884e1dc820461e4  # Vijay's cloned voice on Fish Audio (phone recorded)
 CURATION_API_KEY=<random secret to protect /api/curate>
 ```
 
