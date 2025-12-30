@@ -4,7 +4,6 @@
   "description": "TVK API - AI Curation & Heavy Endpoints",
   "scripts": {
     "dev": "vercel dev",
-    "build": "tsc",
     "curate": "npx ts-node scripts/curate.ts"
   },
   "dependencies": {
