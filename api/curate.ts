@@ -40,29 +40,51 @@ interface TweetItem {
   media?: string[]
 }
 
-// TVK-related search terms - expanded with key figures
-const TVK_KEYWORDS = [
-  'TVK', 'Tamilaga Vettri Kazhagam', 'தமிழக வெற்றிக் கழகம்',
-  'Vijay politics', 'Vijay party', 'Vijay TVK', 'விஜய் அரசியல்',
-  'Thalapathy Vijay political', 'Actor Vijay party',
-  'Bussy Anand', 'N. Anand', 'Sengottaiyan', 'செங்கோட்டையன்',
-  'TVK rally', 'TVK meeting', 'Vijay speech'
+// STRICT TVK keywords - news MUST contain at least one of these
+const TVK_MUST_HAVE_KEYWORDS = [
+  'tvk', 'tamilaga vettri', 'தமிழக வெற்றி', 'தவெக',
+  'bussy anand', 'sengottaiyan', 'செங்கோட்டையன்',
 ]
 
-// English news sources
-const NEWS_SOURCES_EN = [
-  { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss', lang: 'en' },
-  { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories', lang: 'en' },
+// Vijay political keywords (must be combined with political context)
+const VIJAY_POLITICAL_KEYWORDS = [
+  'vijay party', 'vijay politics', 'vijay political', 'actor vijay party',
+  'thalapathy politics', 'விஜய் கட்சி', 'விஜய் அரசியல்',
+  'vijay tvk', 'vijay rally', 'vijay speech',
 ]
 
-// Tamil news via Google News RSS (most reliable for Tamil content)
-const NEWS_SOURCES_TA = [
-  { name: 'Google News TVK Tamil', rss: 'https://news.google.com/rss/search?q=TVK+Vijay+தமிழக+வெற்றிக்+கழகம்&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
-  { name: 'Google News Vijay Tamil', rss: 'https://news.google.com/rss/search?q=விஜய்+அரசியல்+TVK&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
-]
+// Function to check if content is TVK-related
+function isTVKRelated(text: string): boolean {
+  const lowerText = text.toLowerCase()
 
-// Combined news sources
-const NEWS_SOURCES = [...NEWS_SOURCES_EN, ...NEWS_SOURCES_TA]
+  // Must have TVK keyword OR Vijay political keyword
+  const hasTVK = TVK_MUST_HAVE_KEYWORDS.some(kw => lowerText.includes(kw.toLowerCase()))
+  const hasVijayPolitical = VIJAY_POLITICAL_KEYWORDS.some(kw => lowerText.includes(kw.toLowerCase()))
+
+  // Special case: "vijay" alone is NOT enough (could be cricket, other actors)
+  // But "vijay" + political context is OK
+  if (!hasTVK && !hasVijayPolitical) {
+    if (lowerText.includes('vijay') || lowerText.includes('விஜய்')) {
+      // Check for political context
+      const politicalContext = ['party', 'politics', 'political', 'rally', 'speech', 'election',
+                                'கட்சி', 'அரசியல்', 'பேரணி', 'தேர்தல்']
+      return politicalContext.some(ctx => lowerText.includes(ctx))
+    }
+    return false
+  }
+
+  return true
+}
+
+// ONLY TVK-specific news sources - NO general Tamil Nadu news
+const NEWS_SOURCES = [
+  // Google News - TVK specific searches only
+  { name: 'TVK Vijay News', rss: 'https://news.google.com/rss/search?q=%22TVK%22+%22Vijay%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
+  { name: 'TVK Tamil', rss: 'https://news.google.com/rss/search?q=%22தமிழக+வெற்றிக்+கழகம்%22&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
+  { name: 'Vijay Politics', rss: 'https://news.google.com/rss/search?q=%22Tamilaga+Vettri+Kazhagam%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
+  { name: 'Vijay Party Tamil', rss: 'https://news.google.com/rss/search?q=விஜய்+கட்சி+TVK&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
+  { name: 'Bussy Anand', rss: 'https://news.google.com/rss/search?q=%22Bussy+Anand%22+TVK&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
+]
 
 // Tamil News YouTube channels (verified working RSS feeds - NO API KEY NEEDED)
 const TAMIL_NEWS_CHANNELS = [
@@ -248,10 +270,12 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
   const videos: any[] = []
   const seenIds = new Set<string>()
 
-  // Keywords to filter TVK-related videos
+  // STRICT keywords - must have TVK specific terms
   const tvkKeywords = [
-    'tvk', 'vijay', 'tamilaga vettri', 'bussy', 'sengottaiyan',
-    'thalapathy', 'விஜய்', 'தமிழக வெற்றி', 'அரசியல்'
+    'tvk', 'tamilaga vettri', 'தமிழக வெற்றி', 'தவெக',
+    'bussy anand', 'sengottaiyan', 'செங்கோட்டையன்',
+    'vijay party', 'vijay politics', 'vijay political',
+    'விஜய் கட்சி', 'விஜய் அரசியல்'
   ]
 
   // Fetch from Tamil News YouTube channels
@@ -276,16 +300,16 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
         const title = entry.match(/<title>([^<]*)<\/title>/)?.[1] || ''
         const titleLower = title.toLowerCase()
 
-        // Filter for TVK-related or Tamil Nadu political videos
-        const isTVKRelated = tvkKeywords.some(kw => titleLower.includes(kw))
-        const isPolitical = titleLower.includes('politi') ||
-                          titleLower.includes('election') ||
-                          titleLower.includes('dmk') ||
-                          titleLower.includes('aiadmk') ||
-                          titleLower.includes('assembly') ||
-                          titleLower.includes('மாநில')
+        // STRICT: Only TVK-related videos - NO general political content
+        const hasTVKKeyword = tvkKeywords.some(kw => titleLower.includes(kw))
 
-        if (!isTVKRelated && !isPolitical) continue
+        // Also check for "vijay" with political context
+        const hasVijayPolitical = (titleLower.includes('vijay') || titleLower.includes('விஜய்')) &&
+          (titleLower.includes('party') || titleLower.includes('politic') ||
+           titleLower.includes('rally') || titleLower.includes('speech') ||
+           titleLower.includes('கட்சி') || titleLower.includes('அரசியல்'))
+
+        if (!hasTVKKeyword && !hasVijayPolitical) continue
 
         const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
         if (!videoId || seenIds.has(videoId)) continue
@@ -301,8 +325,6 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
           thumbnail,
           publishedAt: published,
           channelTitle: channel.name,
-          // Boost TVK-specific videos
-          isTVKSpecific: isTVKRelated,
         })
       }
     } catch (err) {
@@ -312,14 +334,7 @@ async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
     }
   }
 
-  // Sort to prioritize TVK-specific videos
-  videos.sort((a, b) => {
-    if (a.isTVKSpecific && !b.isTVKSpecific) return -1
-    if (!a.isTVKSpecific && b.isTVKSpecific) return 1
-    return 0
-  })
-
-  console.log(`Fetched ${videos.length} YouTube videos via RSS`)
+  console.log(`Fetched ${videos.length} TVK-related YouTube videos`)
   return videos
 }
 
@@ -491,9 +506,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Scoring news with AI...')
     const scoredNews = await scoreWithAI(rssNews, GROQ_API_KEY)
 
-    // 4. Filter relevant news (score >= 50)
+    // 4. STRICT FILTER - Must be TVK-related AND score >= 70
     const relevantNews = scoredNews
-      .filter(item => item.relevanceScore >= 50)
+      .filter(item => {
+        const text = `${item.title} ${item.description}`.toLowerCase()
+        // MUST contain TVK keywords - no general TN news
+        if (!isTVKRelated(text)) {
+          console.log(`Rejected (no TVK keywords): ${item.title.substring(0, 50)}`)
+          return false
+        }
+        // Must have good score
+        if (item.relevanceScore < 70) {
+          console.log(`Rejected (score ${item.relevanceScore}): ${item.title.substring(0, 50)}`)
+          return false
+        }
+        return true
+      })
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, 20)
       .map((item, idx) => ({
@@ -509,14 +537,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         relevanceScore: item.relevanceScore,
       }))
 
-    // 5. Score and filter videos
+    // 5. STRICT filter videos - must be TVK related
     let relevantVideos: MediaItem[] = []
     if (videos.length > 0) {
       console.log('Scoring videos with AI...')
       const scoredVideos = await scoreWithAI(videos, GROQ_API_KEY)
 
       relevantVideos = scoredVideos
-        .filter(item => item.relevanceScore >= 40) // Lower threshold for videos
+        .filter(item => {
+          // Must be TVK related
+          if (!isTVKRelated(item.title)) {
+            console.log(`Video rejected (no TVK): ${item.title.substring(0, 50)}`)
+            return false
+          }
+          return item.relevanceScore >= 60
+        })
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
         .slice(0, 15)
         .map((item, idx) => ({
@@ -532,9 +567,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }))
     }
 
-    // 6. Extract photos from scored news items
-    console.log('Extracting photos from news...')
-    const photos = extractPhotosFromNews(scoredNews.filter(item => item.relevanceScore >= 50 && item.image))
+    // 6. Extract photos ONLY from TVK-related news items
+    console.log('Extracting photos from TVK news...')
+    const tvkNewsWithImages = scoredNews.filter(item => {
+      if (!item.image) return false
+      const text = `${item.title} ${item.description}`.toLowerCase()
+      return isTVKRelated(text) && item.relevanceScore >= 70
+    })
+    const photos = extractPhotosFromNews(tvkNewsWithImages)
     console.log(`Extracted ${photos.length} photos from news`)
 
     // Combine videos and photos into media
