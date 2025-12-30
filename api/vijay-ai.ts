@@ -134,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'AI service error' })
     }
 
-    const data = await response.json()
+    const data = await response.json() as any
     const aiResponse = data.choices[0]?.message?.content || 'மன்னிக்கவும், பதில் அளிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.'
 
     return res.status(200).json({

@@ -92,7 +92,7 @@ async function fetchYouTubeVideos(apiKey: string): Promise<any[]> {
     try {
       const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&order=date&maxResults=10&key=${apiKey}`
       const response = await fetch(url)
-      const data = await response.json()
+      const data = await response.json() as any
 
       if (data.items) {
         for (const item of data.items) {
@@ -152,7 +152,7 @@ Respond ONLY with JSON array of scores: [score1, score2, ...]`
         }),
       })
 
-      const data = await response.json()
+      const data = await response.json() as any
       const content = data.choices?.[0]?.message?.content || '[]'
 
       // Extract scores from response

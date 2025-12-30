@@ -1,7 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import curatedData from '../data/curated.json'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 // Serve curated news from JSON file (updated by GitHub Action)
+
+function getCuratedData() {
+  try {
+    const filePath = join(process.cwd(), 'data', 'curated.json')
+    const data = readFileSync(filePath, 'utf-8')
+    return JSON.parse(data)
+  } catch (err) {
+    console.error('Failed to read curated.json:', err)
+    return { news: { items: [] }, curatedAt: null }
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -13,6 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   try {
+    const curatedData = getCuratedData()
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 50)
     const language = req.query.language as string | undefined
     const category = req.query.category as string | undefined
