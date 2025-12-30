@@ -28,11 +28,13 @@ interface MediaItem {
   relevanceScore: number
 }
 
-// TVK-related search terms
+// TVK-related search terms - expanded with key figures
 const TVK_KEYWORDS = [
   'TVK', 'Tamilaga Vettri Kazhagam', 'தமிழக வெற்றிக் கழகம்',
   'Vijay politics', 'Vijay party', 'Vijay TVK', 'விஜய் அரசியல்',
-  'Thalapathy Vijay political', 'Actor Vijay party'
+  'Thalapathy Vijay political', 'Actor Vijay party',
+  'Bussy Anand', 'N. Anand', 'Sengottaiyan', 'செங்கோட்டையன்',
+  'TVK rally', 'TVK meeting', 'Vijay speech'
 ]
 
 // Trusted news sources - Tamil Nadu focused
@@ -40,8 +42,21 @@ const NEWS_SOURCES = [
   { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
   { name: 'The Hindu Politics', rss: 'https://www.thehindu.com/news/national/feeder/default.rss' },
   { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
-  { name: 'News18 Politics', rss: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
   { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home' },
+]
+
+// YouTube channels to fetch videos from (RSS feeds - NO API KEY NEEDED)
+const YOUTUBE_CHANNELS = [
+  { name: 'TVK Official', channelId: 'UC9RdE2udmP5OgKMLHhI0j0g' }, // TVK official channel if exists
+  { name: 'Vijay TVK', channelId: 'UCqVEHtQoXHmUCfJ-9smpTSg' }, // Popular Tamil news
+]
+
+// YouTube search RSS (via invidious instances for no API key)
+const YOUTUBE_SEARCH_QUERIES = [
+  'TVK Tamilaga Vettri Kazhagam',
+  'Vijay political speech 2025',
+  'TVK rally meeting',
+  'Bussy Anand TVK',
 ]
 
 // Fetch and parse RSS feeds
@@ -110,34 +125,131 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
   return allItems
 }
 
-// Fetch YouTube videos
-async function fetchYouTubeVideos(apiKey: string): Promise<any[]> {
+// Fetch YouTube videos via RSS (NO API KEY NEEDED)
+async function fetchYouTubeVideosRSS(fetchErrors: string[]): Promise<any[]> {
   const videos: any[] = []
+  const seenIds = new Set<string>()
 
-  for (const query of ['TVK Vijay', 'Tamilaga Vettri Kazhagam', 'Vijay political speech']) {
+  // Fetch from YouTube channel RSS feeds
+  for (const channel of YOUTUBE_CHANNELS) {
     try {
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&order=date&maxResults=10&key=${apiKey}`
-      const response = await fetch(url)
-      const data = await response.json() as any
+      const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`
+      console.log(`Fetching YouTube RSS: ${channel.name}`)
+      const response = await fetch(rssUrl, {
+        headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
+      })
 
-      if (data.items) {
-        for (const item of data.items) {
-          videos.push({
-            id: item.id.videoId,
-            title: item.snippet.title,
-            description: item.snippet.description,
-            thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.default?.url,
-            publishedAt: item.snippet.publishedAt,
-            channelTitle: item.snippet.channelTitle,
-          })
-        }
+      if (!response.ok) {
+        fetchErrors.push(`YouTube ${channel.name}: HTTP ${response.status}`)
+        continue
+      }
+
+      const text = await response.text()
+      const entries = text.match(/<entry>([\s\S]*?)<\/entry>/g) || []
+
+      for (const entry of entries.slice(0, 10)) {
+        const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
+        if (!videoId || seenIds.has(videoId)) continue
+        seenIds.add(videoId)
+
+        const title = entry.match(/<title>([^<]*)<\/title>/)?.[1]
+                   || entry.match(/<media:title>([^<]*)<\/media:title>/)?.[1] || ''
+        const published = entry.match(/<published>([^<]+)<\/published>/)?.[1] || ''
+        const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+
+        videos.push({
+          id: videoId,
+          title: title.trim(),
+          description: '',
+          thumbnail,
+          publishedAt: published,
+          channelTitle: channel.name,
+        })
       }
     } catch (err) {
-      console.error(`YouTube fetch error for ${query}:`, err)
+      fetchErrors.push(`YouTube ${channel.name}: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
+  // Also try to fetch trending TVK videos via scraping popular Tamil news channels
+  const tamilNewsChannels = [
+    { name: 'Thanthi TV', channelId: 'UCT6P1fgX1SNfqf0JQ6fAgVg' },
+    { name: 'Puthiya Thalaimurai', channelId: 'UCmfY8uca1VdNdX5Ea5YJT6A' },
+    { name: 'News7 Tamil', channelId: 'UCfIqZmrPOxgnoYVWmBwCwzA' },
+  ]
+
+  for (const channel of tamilNewsChannels) {
+    try {
+      const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`
+      const response = await fetch(rssUrl, {
+        headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
+      })
+
+      if (!response.ok) continue
+
+      const text = await response.text()
+      const entries = text.match(/<entry>([\s\S]*?)<\/entry>/g) || []
+
+      for (const entry of entries.slice(0, 15)) {
+        const title = entry.match(/<title>([^<]*)<\/title>/)?.[1] || ''
+        const titleLower = title.toLowerCase()
+
+        // Only include TVK-related videos
+        if (!titleLower.includes('tvk') &&
+            !titleLower.includes('vijay') &&
+            !titleLower.includes('tamilaga vettri') &&
+            !titleLower.includes('bussy') &&
+            !titleLower.includes('sengottaiyan')) {
+          continue
+        }
+
+        const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
+        if (!videoId || seenIds.has(videoId)) continue
+        seenIds.add(videoId)
+
+        const published = entry.match(/<published>([^<]+)<\/published>/)?.[1] || ''
+        const thumbnail = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+
+        videos.push({
+          id: videoId,
+          title: title.trim(),
+          description: '',
+          thumbnail,
+          publishedAt: published,
+          channelTitle: channel.name,
+        })
+      }
+    } catch (err) {
+      // Silently skip errors for news channel fetching
+    }
+  }
+
+  console.log(`Fetched ${videos.length} YouTube videos via RSS`)
   return videos
+}
+
+// Extract photos from news items that have images
+function extractPhotosFromNews(newsItems: any[]): any[] {
+  const photos: any[] = []
+  const seenUrls = new Set<string>()
+
+  for (const item of newsItems) {
+    if (item.image && !seenUrls.has(item.image)) {
+      seenUrls.add(item.image)
+      photos.push({
+        id: `photo-${Date.now()}-${photos.length}`,
+        type: 'image',
+        url: item.image,
+        thumbnail: item.image,
+        title: item.title,
+        source: item.source,
+        publishedAt: item.pubDate || new Date().toISOString(),
+        relevanceScore: item.relevanceScore || 50,
+      })
+    }
+  }
+
+  return photos
 }
 
 // Use Groq AI to score relevance
@@ -150,13 +262,17 @@ async function scoreWithAI(items: any[], groqKey: string): Promise<any[]> {
 
     const prompt = `You are a TVK (Tamilaga Vettri Kazhagam) news curator. Score each item's relevance to TVK political party (0-100).
 
-TVK is Actor Vijay's political party in Tamil Nadu, India. Founded Feb 2024. Key figures: Vijay (President), N. Anand (General Secretary), Sengottaiyan.
+TVK is Actor Vijay's political party in Tamil Nadu, India. Founded Feb 2024.
+Key figures: Vijay (President), Bussy Anand/N. Anand (General Secretary), Sengottaiyan.
 
-Score criteria:
-- 90-100: Directly about TVK, Vijay's political activities, TVK rallies/announcements
-- 70-89: Related to Tamil Nadu politics mentioning TVK/Vijay
-- 50-69: Tamil Nadu political news that could affect TVK
-- 0-49: Unrelated content
+Score criteria - BE GENEROUS for Tamil Nadu political news:
+- 95-100: Directly mentions TVK, Vijay's political activities, Bussy Anand, Sengottaiyan
+- 80-94: Tamil Nadu state politics, elections, DMK, AIADMK, political rallies
+- 60-79: Tamil Nadu news that affects politics or governance
+- 40-59: General Tamil Nadu news, development, economy
+- 0-39: Completely unrelated (sports, entertainment, other states)
+
+IMPORTANT: Score Tamil Nadu political news HIGH (70+) even if TVK not mentioned directly.
 
 Items to score:
 ${batch.map((item, idx) => `${idx + 1}. "${item.title}" - ${item.description?.substring(0, 100) || 'No description'}`).join('\n')}
@@ -196,10 +312,13 @@ Respond ONLY with JSON array of scores: [score1, score2, ...]`
       // Fallback: keyword-based scoring
       batch.forEach(item => {
         const text = `${item.title} ${item.description}`.toLowerCase()
-        let score = 30
-        if (text.includes('tvk') || text.includes('tamilaga vettri')) score = 95
-        else if (text.includes('vijay') && (text.includes('politi') || text.includes('party'))) score = 85
-        else if (text.includes('vijay')) score = 60
+        let score = 40 // Default higher for Tamil Nadu news
+        if (text.includes('tvk') || text.includes('tamilaga vettri')) score = 98
+        else if (text.includes('bussy') || text.includes('sengottaiyan')) score = 95
+        else if (text.includes('vijay') && (text.includes('politi') || text.includes('party'))) score = 90
+        else if (text.includes('vijay')) score = 70
+        else if (text.includes('tamil nadu') || text.includes('chennai')) score = 60
+        else if (text.includes('dmk') || text.includes('aiadmk') || text.includes('stalin')) score = 75
         scoredItems.push({ ...item, relevanceScore: score })
       })
     }
@@ -242,7 +361,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const GROQ_API_KEY = process.env.GROQ_API_KEY
-  const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY
 
   if (!GROQ_API_KEY) {
     return res.status(500).json({ error: 'GROQ_API_KEY not configured' })
@@ -259,13 +377,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rssNews = await fetchRSSNews(fetchErrors)
     console.log(`Fetched ${rssNews.length} RSS items`)
 
-    // 2. Fetch YouTube videos (if API key available)
-    let videos: any[] = []
-    if (YOUTUBE_API_KEY) {
-      console.log('Fetching YouTube videos...')
-      videos = await fetchYouTubeVideos(YOUTUBE_API_KEY)
-      console.log(`Fetched ${videos.length} YouTube videos`)
-    }
+    // 2. Fetch YouTube videos via RSS (NO API KEY NEEDED)
+    console.log('Fetching YouTube videos via RSS...')
+    const videos = await fetchYouTubeVideosRSS(fetchErrors)
+    console.log(`Fetched ${videos.length} YouTube videos`)
 
     // 3. Score news with AI
     console.log('Scoring news with AI...')
@@ -290,13 +405,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
 
     // 5. Score and filter videos
-    let relevantMedia: MediaItem[] = []
+    let relevantVideos: MediaItem[] = []
     if (videos.length > 0) {
       console.log('Scoring videos with AI...')
       const scoredVideos = await scoreWithAI(videos, GROQ_API_KEY)
 
-      relevantMedia = scoredVideos
-        .filter(item => item.relevanceScore >= 50)
+      relevantVideos = scoredVideos
+        .filter(item => item.relevanceScore >= 40) // Lower threshold for videos
         .sort((a, b) => b.relevanceScore - a.relevanceScore)
         .slice(0, 15)
         .map((item, idx) => ({
@@ -312,6 +427,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }))
     }
 
+    // 6. Extract photos from scored news items
+    console.log('Extracting photos from news...')
+    const photos = extractPhotosFromNews(scoredNews.filter(item => item.relevanceScore >= 50 && item.image))
+    console.log(`Extracted ${photos.length} photos from news`)
+
+    // Combine videos and photos into media
+    const relevantMedia: MediaItem[] = [
+      ...relevantVideos,
+      ...photos.slice(0, 20), // Limit photos
+    ]
+
     const result = {
       success: true,
       curatedAt: new Date().toISOString(),
@@ -326,7 +452,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stats: {
         totalRSSFetched: rssNews.length,
         totalVideosFetched: videos.length,
+        totalPhotosFetched: photos.length,
         newsAfterFiltering: relevantNews.length,
+        videosAfterFiltering: relevantVideos.length,
+        photosAfterFiltering: photos.length,
         mediaAfterFiltering: relevantMedia.length,
       },
       debug: {
