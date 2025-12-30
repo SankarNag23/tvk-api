@@ -37,19 +37,16 @@ const TVK_KEYWORDS = [
   'TVK rally', 'TVK meeting', 'Vijay speech'
 ]
 
-// Trusted news sources - Tamil Nadu focused (English)
+// English news sources
 const NEWS_SOURCES_EN = [
   { name: 'The Hindu TN', rss: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss', lang: 'en' },
   { name: 'NDTV', rss: 'https://feeds.feedburner.com/ndtvnews-top-stories', lang: 'en' },
-  { name: 'India Today', rss: 'https://www.indiatoday.in/rss/home', lang: 'en' },
 ]
 
-// Tamil language news sources
+// Tamil news via Google News RSS (most reliable for Tamil content)
 const NEWS_SOURCES_TA = [
-  { name: 'Dinamalar', rss: 'https://www.dinamalar.com/rss_feed.asp?cat=g11', lang: 'ta' },
-  { name: 'Vikatan', rss: 'https://www.vikatan.com/rss/news.xml', lang: 'ta' },
-  { name: 'Tamil Hindu', rss: 'https://www.hindutamil.in/feeds/tamilnadu.xml', lang: 'ta' },
-  { name: 'Puthiya Thalaimurai', rss: 'https://www.puthiyathalaimurai.com/feeds/news.xml', lang: 'ta' },
+  { name: 'Google News TVK Tamil', rss: 'https://news.google.com/rss/search?q=TVK+Vijay+தமிழக+வெற்றிக்+கழகம்&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
+  { name: 'Google News Vijay Tamil', rss: 'https://news.google.com/rss/search?q=விஜய்+அரசியல்+TVK&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
 ]
 
 // Combined news sources
