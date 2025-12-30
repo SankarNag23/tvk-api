@@ -28,6 +28,18 @@ interface MediaItem {
   relevanceScore: number
 }
 
+interface TweetItem {
+  id: string
+  text: string
+  author: string
+  authorHandle: string
+  url: string
+  publishedAt: string
+  likes?: number
+  retweets?: number
+  media?: string[]
+}
+
 // TVK-related search terms - expanded with key figures
 const TVK_KEYWORDS = [
   'TVK', 'Tamilaga Vettri Kazhagam', 'தமிழக வெற்றிக் கழகம்',
@@ -56,8 +68,25 @@ const NEWS_SOURCES = [...NEWS_SOURCES_EN, ...NEWS_SOURCES_TA]
 const TAMIL_NEWS_CHANNELS = [
   { name: 'Thanthi TV', channelId: 'UC-JFyL0zDFOsPMpuWu39rPA' },
   { name: 'Sun News', channelId: 'UCYlh4lH762HvHt6mmiecyWQ' },
-  { name: 'Polimer News', channelId: 'UCfW_DB8FUEqSCeX6vCfVjNw' },
-  { name: 'Jaya Plus', channelId: 'UC4cU_F4YKKzrM4OY0y1oA6Q' },
+  { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' }, // Corrected ID
+]
+
+// TVK-related Twitter/X accounts and hashtags
+const TVK_TWITTER_ACCOUNTS = [
+  'tvaborncafe',      // TVK supporter account
+  'TVK_Official_',    // TVK official (if exists)
+  'acaborncafe',      // Vijay fan club
+]
+
+const TVK_TWITTER_HASHTAGS = [
+  'TVK', 'TamilagaVettriKazhagam', 'விஜய்', 'Vijay', 'Thalapathy'
+]
+
+// Nitter instances for Twitter RSS (fallback list)
+const NITTER_INSTANCES = [
+  'nitter.poast.org',
+  'nitter.privacydev.net',
+  'nitter.net',
 ]
 
 // Fetch and parse RSS feeds
@@ -125,6 +154,96 @@ async function fetchRSSNews(fetchErrors: string[]): Promise<any[]> {
   }
 
   return allItems
+}
+
+// Fetch Twitter/X posts via Nitter RSS (NO API KEY NEEDED)
+async function fetchTwitterPosts(fetchErrors: string[]): Promise<TweetItem[]> {
+  const tweets: TweetItem[] = []
+  const seenIds = new Set<string>()
+
+  // Try each Nitter instance until one works
+  for (const instance of NITTER_INSTANCES) {
+    let instanceWorking = false
+
+    // Fetch from TVK-related accounts
+    for (const account of TVK_TWITTER_ACCOUNTS) {
+      try {
+        const rssUrl = `https://${instance}/${account}/rss`
+        console.log(`Fetching Twitter RSS: @${account} from ${instance}`)
+
+        const response = await fetch(rssUrl, {
+          headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' },
+        })
+
+        if (!response.ok) {
+          if (response.status === 404) continue // Account doesn't exist
+          continue
+        }
+
+        instanceWorking = true
+        const text = await response.text()
+        const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
+
+        for (const item of items.slice(0, 10)) {
+          const title = item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/)?.[1]
+                     || item.match(/<title>([^<]*)<\/title>/)?.[1] || ''
+          const link = item.match(/<link>([^<]+)<\/link>/)?.[1] || ''
+          const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1] || ''
+          const description = item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/)?.[1]
+                           || item.match(/<description>([^<]*)<\/description>/)?.[1] || ''
+
+          // Extract tweet ID from link
+          const tweetId = link.match(/status\/(\d+)/)?.[1]
+          if (!tweetId || seenIds.has(tweetId)) continue
+          seenIds.add(tweetId)
+
+          // Extract media URLs from description
+          const mediaUrls = description.match(/https:\/\/[^\s"<>]+\.(jpg|jpeg|png|gif|mp4)/gi) || []
+
+          // Safe date parsing
+          let parsedDate: string
+          try {
+            parsedDate = pubDate ? new Date(pubDate).toISOString() : new Date().toISOString()
+          } catch {
+            parsedDate = new Date().toISOString()
+          }
+
+          tweets.push({
+            id: tweetId,
+            text: title.replace(/<[^>]*>/g, '').trim().substring(0, 280),
+            author: account,
+            authorHandle: `@${account}`,
+            url: `https://twitter.com/${account}/status/${tweetId}`,
+            publishedAt: parsedDate,
+            media: mediaUrls.length > 0 ? mediaUrls : undefined,
+          })
+        }
+      } catch (err) {
+        console.error(`Twitter @${account}: ${err instanceof Error ? err.message : 'Error'}`)
+      }
+    }
+
+    // If this instance worked, don't try others
+    if (instanceWorking) break
+  }
+
+  // Also try searching for TVK hashtag via Google News
+  try {
+    const hashtagRss = `https://news.google.com/rss/search?q=TVK+Vijay+twitter&hl=en&gl=IN&ceid=IN:en`
+    const response = await fetch(hashtagRss, {
+      headers: { 'User-Agent': 'TVK-Curation-Bot/1.0' }
+    })
+    if (response.ok) {
+      const text = await response.text()
+      const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
+      console.log(`Found ${items.length} Twitter-related news items`)
+    }
+  } catch (err) {
+    console.error('Twitter hashtag search failed:', err)
+  }
+
+  console.log(`Fetched ${tweets.length} Twitter posts`)
+  return tweets
 }
 
 // Fetch YouTube videos via RSS (NO API KEY NEEDED)
@@ -366,6 +485,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const videos = await fetchYouTubeVideosRSS(fetchErrors)
     console.log(`Fetched ${videos.length} YouTube videos`)
 
+    // 3. Fetch Twitter posts via Nitter RSS
+    console.log('Fetching Twitter posts...')
+    const tweets = await fetchTwitterPosts(fetchErrors)
+    console.log(`Fetched ${tweets.length} Twitter posts`)
+
     // 3. Score news with AI
     console.log('Scoring news with AI...')
     const scoredNews = await scoreWithAI(rssNews, GROQ_API_KEY)
@@ -433,10 +557,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         count: relevantMedia.length,
         items: relevantMedia,
       },
+      twitter: {
+        count: tweets.length,
+        items: tweets.slice(0, 20), // Limit to 20 tweets
+      },
       stats: {
         totalRSSFetched: rssNews.length,
         totalVideosFetched: videos.length,
         totalPhotosFetched: photos.length,
+        totalTweetsFetched: tweets.length,
         newsAfterFiltering: relevantNews.length,
         videosAfterFiltering: relevantVideos.length,
         photosAfterFiltering: photos.length,
