@@ -90,7 +90,41 @@ const NEWS_SOURCES = [
 const TAMIL_NEWS_CHANNELS = [
   { name: 'Thanthi TV', channelId: 'UC-JFyL0zDFOsPMpuWu39rPA' },
   { name: 'Sun News', channelId: 'UCYlh4lH762HvHt6mmiecyWQ' },
-  { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' }, // Corrected ID
+  { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' },
+]
+
+// TVK official/related images (curated gallery)
+const TVK_STATIC_IMAGES = [
+  {
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/TVK_Logo.svg/1200px-TVK_Logo.svg.png',
+    title: 'TVK Official Logo - தமிழக வெற்றிக் கழகம்',
+    source: 'Wikipedia',
+  },
+  {
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Thalapathy_Vijay_TVK.jpg/800px-Thalapathy_Vijay_TVK.jpg',
+    title: 'Thalapathy Vijay - TVK President',
+    source: 'Wikipedia',
+  },
+  {
+    url: 'https://images.hindustantimes.com/rf/image_size_960x540/HT/p2/2024/02/02/Pictures/tvk-launch_13a7bd14-c195-11ee-94ad-e07ef424e2ff.jpg',
+    title: 'TVK Party Launch - February 2024',
+    source: 'Hindustan Times',
+  },
+  {
+    url: 'https://www.deccanherald.com/h-upload/2024/10/27/1870655-vijay-pti-1.jpg',
+    title: 'Vijay TVK Rally - Villupuram 2024',
+    source: 'Deccan Herald',
+  },
+  {
+    url: 'https://static.toiimg.com/thumb/msid-114606025,width-1280,resizemode-4/114606025.jpg',
+    title: 'TVK Villupuram Rally - Massive Gathering',
+    source: 'Times of India',
+  },
+  {
+    url: 'https://images.indianexpress.com/2024/10/Vijay-TVK-PTI.jpg',
+    title: 'Vijay Addresses TVK Supporters',
+    source: 'Indian Express',
+  },
 ]
 
 // TVK-related Twitter/X accounts (official and fan accounts)
@@ -567,15 +601,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }))
     }
 
-    // 6. Extract photos ONLY from TVK-related news items
-    console.log('Extracting photos from TVK news...')
+    // 6. Include TVK static images + news images
+    console.log('Adding TVK photos...')
     const tvkNewsWithImages = scoredNews.filter(item => {
       if (!item.image) return false
       const text = `${item.title} ${item.description}`.toLowerCase()
       return isTVKRelated(text) && item.relevanceScore >= 70
     })
-    const photos = extractPhotosFromNews(tvkNewsWithImages)
-    console.log(`Extracted ${photos.length} photos from news`)
+    const newsPhotos = extractPhotosFromNews(tvkNewsWithImages)
+
+    // Add static TVK images
+    const staticPhotos: MediaItem[] = TVK_STATIC_IMAGES.map((img, idx) => ({
+      id: `tvk-static-${idx}`,
+      type: 'image' as const,
+      url: img.url,
+      thumbnail: img.url,
+      title: img.title,
+      source: img.source,
+      publishedAt: new Date().toISOString(),
+      relevanceScore: 100, // Static images are always relevant
+    }))
+
+    const photos = [...staticPhotos, ...newsPhotos]
+    console.log(`Total photos: ${photos.length} (${staticPhotos.length} static + ${newsPhotos.length} from news)`)
 
     // Combine videos and photos into media
     const relevantMedia: MediaItem[] = [
