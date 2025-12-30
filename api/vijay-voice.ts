@@ -6,7 +6,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 const FISH_AUDIO_API_KEY = process.env.FISH_AUDIO_API_KEY
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
-const VIJAY_VOICE_ID = process.env.VIJAY_VOICE_ID || '9c2a7167c68e4a1bb884e1dc820461e4'
+const VIJAY_VOICE_ID = process.env.VIJAY_VOICE_ID || '457f72ed33a747658d40b5f876ada7fe'
 
 // ElevenLabs fallback voice - a mature male voice
 const ELEVENLABS_FALLBACK_VOICE = 'JBFqnCBsd6RMkjVDRZzb' // George - Warm storyteller
