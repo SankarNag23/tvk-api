@@ -9,7 +9,7 @@
 
 This is the **API backend** for the TVK website. It handles heavy processing:
 - AI chat (Groq)
-- Voice synthesis (ElevenLabs)
+- Voice synthesis (Fish Audio + ElevenLabs fallback)
 - Content curation (RSS + AI scoring)
 
 **Frontend is in a separate repo**: https://github.com/SankarNag23/tvk
@@ -56,7 +56,10 @@ tvk-api/
 │   ├── news.ts        # Serves curated news from data/curated.json
 │   ├── media.ts       # Serves curated media from data/curated.json
 │   ├── vijay-ai.ts    # Groq Llama 3.3 chat endpoint
-│   └── vijay-voice.ts # ElevenLabs TTS endpoint
+│   └── vijay-voice.ts # Fish Audio TTS (with ElevenLabs fallback)
+├── scripts/
+│   ├── clone-voice.py     # ElevenLabs voice cloning script
+│   └── fish-audio-clone.py # Fish Audio voice cloning script
 ├── data/
 │   └── curated.json   # Auto-updated by GitHub Action every 4 hours
 ├── .github/
@@ -76,10 +79,14 @@ tvk-api/
 ```
 GROQ_API_KEY=<your groq api key>
 YOUTUBE_API_KEY=<youtube data api v3 key>
-ELEVENLABS_API_KEY=<elevenlabs api key>
-VIJAY_VOICE_ID=<cloned voice id from elevenlabs>
+FISH_AUDIO_API_KEY=<fish audio api key - primary for Vijay's cloned voice>
+ELEVENLABS_API_KEY=<elevenlabs api key - fallback TTS>
+VIJAY_VOICE_ID=4415218e21374deeadf8b11e49a68368  # Vijay's cloned voice on Fish Audio
 CURATION_API_KEY=<random secret to protect /api/curate>
 ```
+
+**Voice Setup**: Vijay's voice was cloned using Fish Audio. The cloned voice ID is already set above.
+To use Vijay's actual cloned voice, add credits to your Fish Audio account at https://fish.audio
 
 ### GitHub Secrets (for Actions)
 ```
@@ -195,9 +202,10 @@ curl -X POST https://tvk-api.vercel.app/api/vijay-voice \
 4. Manual trigger: Actions → Run workflow
 
 ### "Voice returns 500"
-1. Check ELEVENLABS_API_KEY in Vercel env
-2. Verify VIJAY_VOICE_ID exists in ElevenLabs
-3. Check ElevenLabs quota/credits
+1. Check FISH_AUDIO_API_KEY or ELEVENLABS_API_KEY in Vercel env
+2. If using Fish Audio: Add credits at https://fish.audio (voice ID: 4415218e21374deeadf8b11e49a68368)
+3. If Fish Audio fails, it falls back to ElevenLabs automatically
+4. Check API quota/credits for both services
 
 ### "AI chat not responding"
 1. Check GROQ_API_KEY in Vercel env
