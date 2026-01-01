@@ -1,15 +1,18 @@
 {
   "name": "tvk-api",
-  "version": "1.0.0",
-  "description": "TVK API - AI Curation & Heavy Endpoints",
+  "version": "2.0.0",
+  "description": "TVK API - AI Curation & Heavy Endpoints with SQLite",
   "scripts": {
     "dev": "vercel dev",
-    "curate": "npx ts-node scripts/curate.ts"
+    "init-db": "npx ts-node scripts/init-db.ts",
+    "curate": "npx ts-node scripts/run-curation.ts",
+    "curate-hero": "npx ts-node scripts/curate-hero.ts",
+    "build": "tsc"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "@vercel/node": "^3.0.0",
-    "node-fetch": "^2.7.0",
-    "rss-parser": "^3.13.0"
+    "dotenv": "^17.2.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

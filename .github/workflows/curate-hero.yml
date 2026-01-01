@@ -1,27 +1,27 @@
-name: Media Curation (4hr)
+name: Hero Image Curation (2hr)
 
 on:
   schedule:
-    # Run every 4 hours for news and video content
-    - cron: '0 */4 * * *'
+    # Run every 2 hours for high-quality hero carousel images
+    - cron: '0 */2 * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  curate-media:
+  curate-hero-images:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Curate News & Media via API
+      - name: Curate Hero Images via API
         env:
           CURATION_API_KEY: ${{ secrets.CURATION_API_KEY }}
         run: |
-          echo "=== TVK Media Curation ==="
+          echo "=== TVK Hero Image Curation ==="
           echo "Time: $(date -u)"
           echo ""
-          echo "Calling /api/curate-media..."
+          echo "Calling /api/curate-hero..."
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://tvk-api.vercel.app/api/curate-media" \
+            "https://tvk-api.vercel.app/api/curate-hero" \
             -H "Authorization: Bearer ${CURATION_API_KEY}" \
             -H "Content-Type: application/json")
 
@@ -41,11 +41,11 @@ jobs:
           fi
 
           echo ""
-          echo "=== Media curation completed successfully ==="
+          echo "=== Hero curation completed successfully ==="
 
       - name: Log Summary
         if: always()
         run: |
           echo ""
           echo "Workflow completed at $(date -u)"
-          echo "Next run: in 4 hours"
+          echo "Next run: in 2 hours"

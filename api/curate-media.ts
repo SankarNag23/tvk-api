@@ -1,19 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
-  initDB,
-  insertNews,
-  insertMedia,
-  insertTweet,
-  newsUrlExists,
-  mediaUrlExists,
-  tweetExists,
-  logCurationRun,
-  cleanupOldContent,
-  getSetting,
-  closeDB,
+  initDB, insertNews, insertMedia, newsUrlExists, mediaUrlExists,
+  logCurationRun, cleanupOldContent, getSetting
 } from '../lib/db'
 
-// Types
+/**
+ * POST /api/curate-media
+ * AI curation for news and media content
+ * Triggered by GitHub Action every 4 hours
+ * Protected by CURATION_API_KEY
+ */
+
 interface RawNewsItem {
   title: string
   description: string
@@ -21,33 +18,36 @@ interface RawNewsItem {
   image?: string
   source: string
   pubDate: string
-  sourceLang: string
+  lang: string
 }
 
 interface RawVideoItem {
   id: string
   title: string
-  description: string
   thumbnail: string
   publishedAt: string
   channelTitle: string
 }
 
-interface RawTweetItem {
-  id: string
-  text: string
-  author: string
-  authorHandle: string
-  authorAvatar?: string
-  url: string
-  mediaUrls?: string[]
-  likes: number
-  retweets: number
-  publishedAt: string
-}
+// News RSS sources
+const NEWS_SOURCES = [
+  { name: 'TVK Vijay News', rss: 'https://news.google.com/rss/search?q=%22TVK%22+%22Vijay%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
+  { name: 'TVK Tamil', rss: 'https://news.google.com/rss/search?q=%22தமிழக+வெற்றிக்+கழகம்%22&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
+  { name: 'Vijay Politics', rss: 'https://news.google.com/rss/search?q=%22Tamilaga+Vettri+Kazhagam%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
+  { name: 'Vijay Party Tamil', rss: 'https://news.google.com/rss/search?q=விஜய்+கட்சி+TVK&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
+]
 
-// STRICT TVK keywords
-const TVK_MUST_HAVE_KEYWORDS = [
+// YouTube channels
+const YOUTUBE_CHANNELS = [
+  { name: 'Thanthi TV', channelId: 'UC-JFyL0zDFOsPMpuWu39rPA' },
+  { name: 'Sun News', channelId: 'UCYlh4lH762HvHt6mmiecyWQ' },
+  { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' },
+  { name: 'News7 Tamil', channelId: 'UCpATSg5_v9ZQ6cM4mMRqxUw' },
+  { name: 'Puthiya Thalaimurai', channelId: 'UCt0K_Bvs7lSNL60lHy-Bc0A' },
+]
+
+// TVK keywords
+const TVK_KEYWORDS = [
   'tvk', 'tamilaga vettri', 'தமிழக வெற்றி', 'தவெக',
   'bussy anand', 'sengottaiyan', 'செங்கோட்டையன்',
 ]
@@ -60,7 +60,7 @@ const VIJAY_POLITICAL_KEYWORDS = [
 
 function isTVKRelated(text: string): boolean {
   const lowerText = text.toLowerCase()
-  const hasTVK = TVK_MUST_HAVE_KEYWORDS.some(kw => lowerText.includes(kw.toLowerCase()))
+  const hasTVK = TVK_KEYWORDS.some(kw => lowerText.includes(kw.toLowerCase()))
   const hasVijayPolitical = VIJAY_POLITICAL_KEYWORDS.some(kw => lowerText.includes(kw.toLowerCase()))
 
   if (!hasTVK && !hasVijayPolitical) {
@@ -74,22 +74,7 @@ function isTVKRelated(text: string): boolean {
   return true
 }
 
-// News RSS sources
-const NEWS_SOURCES = [
-  { name: 'TVK Vijay News', rss: 'https://news.google.com/rss/search?q=%22TVK%22+%22Vijay%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
-  { name: 'TVK Tamil', rss: 'https://news.google.com/rss/search?q=%22தமிழக+வெற்றிக்+கழகம்%22&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
-  { name: 'Vijay Politics', rss: 'https://news.google.com/rss/search?q=%22Tamilaga+Vettri+Kazhagam%22&hl=en&gl=IN&ceid=IN:en', lang: 'en' },
-  { name: 'Vijay Party Tamil', rss: 'https://news.google.com/rss/search?q=விஜய்+கட்சி+TVK&hl=ta&gl=IN&ceid=IN:ta', lang: 'ta' },
-]
-
-// YouTube channels for video content
-const YOUTUBE_CHANNELS = [
-  { name: 'Thanthi TV', channelId: 'UC-JFyL0zDFOsPMpuWu39rPA' },
-  { name: 'Sun News', channelId: 'UCYlh4lH762HvHt6mmiecyWQ' },
-  { name: 'Polimer News', channelId: 'UC8Z-VjXBtDJTvq6aqkIskPg' },
-]
-
-// Fetch RSS news
+// Fetch news from RSS
 async function fetchRSSNews(errors: string[]): Promise<RawNewsItem[]> {
   const allItems: RawNewsItem[] = []
 
@@ -132,7 +117,7 @@ async function fetchRSSNews(errors: string[]): Promise<RawNewsItem[]> {
           image,
           source: source.name,
           pubDate: parsedDate,
-          sourceLang: source.lang,
+          lang: source.lang,
         })
       }
     } catch (err) {
@@ -143,13 +128,9 @@ async function fetchRSSNews(errors: string[]): Promise<RawNewsItem[]> {
   return allItems
 }
 
-// Fetch YouTube videos via RSS
+// Fetch YouTube videos
 async function fetchYouTubeVideos(errors: string[]): Promise<RawVideoItem[]> {
   const videos: RawVideoItem[] = []
-  const tvkKeywords = [
-    'tvk', 'tamilaga vettri', 'தமிழக வெற்றி', 'தவெக',
-    'vijay party', 'vijay politics', 'விஜய் கட்சி',
-  ]
 
   for (const channel of YOUTUBE_CHANNELS) {
     try {
@@ -166,18 +147,11 @@ async function fetchYouTubeVideos(errors: string[]): Promise<RawVideoItem[]> {
       const text = await response.text()
       const entries = text.match(/<entry>([\s\S]*?)<\/entry>/g) || []
 
-      for (const entry of entries.slice(0, 20)) {
+      for (const entry of entries.slice(0, 15)) {
         const title = entry.match(/<title>([^<]*)<\/title>/)?.[1] || ''
-        const titleLower = title.toLowerCase()
 
-        // Check if TVK related
-        const hasTVKKeyword = tvkKeywords.some(kw => titleLower.includes(kw))
-        const hasVijayPolitical = (titleLower.includes('vijay') || titleLower.includes('விஜய்')) &&
-          (titleLower.includes('party') || titleLower.includes('politic') ||
-           titleLower.includes('rally') || titleLower.includes('speech') ||
-           titleLower.includes('கட்சி') || titleLower.includes('அரசியல்'))
-
-        if (!hasTVKKeyword && !hasVijayPolitical) continue
+        // Must be TVK related
+        if (!isTVKRelated(title)) continue
 
         const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1]
         if (!videoId) continue
@@ -187,7 +161,6 @@ async function fetchYouTubeVideos(errors: string[]): Promise<RawVideoItem[]> {
         videos.push({
           id: videoId,
           title: title.trim(),
-          description: '',
           thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
           publishedAt: published,
           channelTitle: channel.name,
@@ -201,60 +174,8 @@ async function fetchYouTubeVideos(errors: string[]): Promise<RawVideoItem[]> {
   return videos
 }
 
-// Fetch Twitter via Apify (if configured)
-async function fetchTwitterPosts(errors: string[]): Promise<RawTweetItem[]> {
-  const APIFY_API_KEY = process.env.APIFY_API_KEY
-  if (!APIFY_API_KEY) {
-    errors.push('Twitter: APIFY_API_KEY not configured')
-    return []
-  }
-
-  const tweets: RawTweetItem[] = []
-  const accounts = ['TVKVijayHQ', 'TVKOfficial']
-
-  for (const account of accounts) {
-    try {
-      // Use Apify Twitter Scraper
-      const response = await fetch(`https://api.apify.com/v2/acts/apidojo~twitter-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          searchTerms: [`from:${account}`],
-          maxTweets: 20,
-          addUserInfo: true,
-        }),
-      })
-
-      if (!response.ok) {
-        errors.push(`Twitter @${account}: HTTP ${response.status}`)
-        continue
-      }
-
-      const data = await response.json() as any[]
-      for (const tweet of data) {
-        tweets.push({
-          id: tweet.id || tweet.id_str,
-          text: tweet.full_text || tweet.text || '',
-          author: tweet.user?.name || account,
-          authorHandle: `@${tweet.user?.screen_name || account}`,
-          authorAvatar: tweet.user?.profile_image_url_https,
-          url: `https://x.com/${account}/status/${tweet.id || tweet.id_str}`,
-          mediaUrls: tweet.entities?.media?.map((m: any) => m.media_url_https),
-          likes: tweet.favorite_count || 0,
-          retweets: tweet.retweet_count || 0,
-          publishedAt: tweet.created_at ? new Date(tweet.created_at).toISOString() : new Date().toISOString(),
-        })
-      }
-    } catch (err) {
-      errors.push(`Twitter @${account}: ${err instanceof Error ? err.message : 'Error'}`)
-    }
-  }
-
-  return tweets
-}
-
-// AI scoring with Groq
-async function scoreWithAI(items: { title: string; description: string }[], groqKey: string): Promise<number[]> {
+// Score content with AI
+async function scoreWithAI(items: { title: string; description?: string }[], groqKey: string): Promise<number[]> {
   const scores: number[] = []
 
   for (let i = 0; i < items.length; i += 5) {
@@ -314,8 +235,8 @@ function detectLanguage(text: string): 'ta' | 'en' {
   return tamilRegex.test(text) ? 'ta' : 'en'
 }
 
-// Main handler
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -325,6 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Auth check
   const authKey = req.headers.authorization?.replace('Bearer ', '')
   const expectedKey = process.env.CURATION_API_KEY
+
   if (expectedKey && authKey !== expectedKey) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -334,48 +256,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'GROQ_API_KEY not configured' })
   }
 
-  const runId = `curation-${Date.now()}`
+  const runId = `media-${Date.now()}`
   const startedAt = new Date().toISOString()
   const errors: string[] = []
   const stats = {
-    news: { fetched: 0, added: 0, updated: 0, skipped: 0 },
-    media: { fetched: 0, added: 0, updated: 0, skipped: 0 },
-    tweets: { fetched: 0, added: 0, updated: 0, skipped: 0 },
+    news: { fetched: 0, added: 0, skipped: 0 },
+    media: { fetched: 0, added: 0, skipped: 0 },
   }
 
   try {
-    console.log('Starting curation run:', runId)
-    initDB()
+    console.log('Starting media curation:', runId)
+    await initDB()
 
     // 1. Fetch news
     console.log('Fetching RSS news...')
-    const rawNews = await fetchRSSNews(errors)
-    stats.news.fetched = rawNews.length
-    console.log(`Fetched ${rawNews.length} news items`)
+    const rssNews = await fetchRSSNews(errors)
+    stats.news.fetched = rssNews.length
+    console.log(`Fetched ${rssNews.length} news items`)
 
     // 2. Fetch YouTube videos
     console.log('Fetching YouTube videos...')
-    const rawVideos = await fetchYouTubeVideos(errors)
-    stats.media.fetched = rawVideos.length
-    console.log(`Fetched ${rawVideos.length} videos`)
+    const videos = await fetchYouTubeVideos(errors)
+    stats.media.fetched = videos.length
+    console.log(`Fetched ${videos.length} videos`)
 
-    // 3. Fetch Twitter (if configured)
-    console.log('Fetching Twitter posts...')
-    const rawTweets = await fetchTwitterPosts(errors)
-    stats.tweets.fetched = rawTweets.length
-    console.log(`Fetched ${rawTweets.length} tweets`)
-
-    // 4. Score news with AI
+    // 3. Score news with AI
     console.log('Scoring news with AI...')
-    const newsForScoring = rawNews.map(n => ({ title: n.title, description: n.description }))
+    const newsForScoring = rssNews.map(n => ({ title: n.title, description: n.description }))
     const newsScores = await scoreWithAI(newsForScoring, GROQ_API_KEY)
 
-    // 5. Process and insert news
-    console.log('Processing news items...')
-    const minScore = parseInt(getSetting('curation.min_score') || '50')
+    // 4. Process news
+    const minScore = parseInt(await getSetting('curation.min_score') || '50')
 
-    for (let i = 0; i < rawNews.length; i++) {
-      const item = rawNews[i]
+    for (let i = 0; i < rssNews.length; i++) {
+      const item = rssNews[i]
       const score = newsScores[i] || 50
 
       // Skip if not TVK related or low score
@@ -384,37 +298,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue
       }
 
-      // Check if URL exists
-      if (newsUrlExists(item.url)) {
-        stats.news.updated++
+      // Skip if URL exists
+      if (await newsUrlExists(item.url)) {
+        stats.news.skipped++
         continue
       }
 
-      const success = insertNews({
+      const success = await insertNews({
         id: `news-${Date.now()}-${i}`,
         title: item.title,
         description: item.description,
         url: item.url,
         image_url: item.image || undefined,
         source: item.source,
-        language: (item.sourceLang as 'en' | 'ta') || detectLanguage(item.title),
+        language: item.lang || detectLanguage(item.title),
         category: categorizeNews(item.title, item.description),
         relevance_score: score,
         status: score >= 80 ? 'approved' : 'pending',
         published_at: item.pubDate,
       })
 
-      if (success) stats.news.added++
-      else stats.news.skipped++
+      if (success) {
+        stats.news.added++
+        console.log(`Added news: ${item.title.substring(0, 50)}...`)
+      } else {
+        stats.news.skipped++
+      }
     }
 
-    // 6. Score and insert videos
+    // 5. Score and insert videos
     console.log('Processing videos...')
-    const videoForScoring = rawVideos.map(v => ({ title: v.title, description: v.description }))
+    const videoForScoring = videos.map(v => ({ title: v.title }))
     const videoScores = await scoreWithAI(videoForScoring, GROQ_API_KEY)
 
-    for (let i = 0; i < rawVideos.length; i++) {
-      const video = rawVideos[i]
+    for (let i = 0; i < videos.length; i++) {
+      const video = videos[i]
       const score = videoScores[i] || 50
 
       if (score < minScore) {
@@ -423,94 +341,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const videoUrl = `https://www.youtube.com/watch?v=${video.id}`
-      if (mediaUrlExists(videoUrl)) {
-        stats.media.updated++
+      if (await mediaUrlExists(videoUrl)) {
+        stats.media.skipped++
         continue
       }
 
-      const success = insertMedia({
+      const success = await insertMedia({
         id: `vid-${video.id}`,
         type: 'video',
         url: videoUrl,
         thumbnail_url: video.thumbnail,
         title: video.title,
-        description: video.description,
         source: video.channelTitle,
         embed_url: `https://www.youtube.com/embed/${video.id}`,
+        width: 1280,
+        height: 720,
         relevance_score: score,
         status: score >= 80 ? 'approved' : 'pending',
         published_at: video.publishedAt,
       })
 
-      if (success) stats.media.added++
-      else stats.media.skipped++
-    }
-
-    // 7. Insert tweets
-    console.log('Processing tweets...')
-    for (const tweet of rawTweets) {
-      if (tweetExists(tweet.id)) {
-        stats.tweets.updated++
-        continue
+      if (success) {
+        stats.media.added++
+        console.log(`Added video: ${video.title.substring(0, 50)}...`)
+      } else {
+        stats.media.skipped++
       }
-
-      const success = insertTweet({
-        id: tweet.id,
-        text: tweet.text,
-        author: tweet.author,
-        author_handle: tweet.authorHandle,
-        author_avatar: tweet.authorAvatar,
-        url: tweet.url,
-        media_urls: tweet.mediaUrls ? JSON.stringify(tweet.mediaUrls) : undefined,
-        likes: tweet.likes,
-        retweets: tweet.retweets,
-        relevance_score: 80, // Default high score for official accounts
-        status: 'approved',
-        published_at: tweet.publishedAt,
-      })
-
-      if (success) stats.tweets.added++
-      else stats.tweets.skipped++
     }
 
-    // 8. Cleanup old content
+    // 6. Cleanup old content
     console.log('Cleaning up old content...')
-    const cleanupDays = parseInt(getSetting('curation.cleanup_days') || '30')
-    const cleanup = cleanupOldContent(cleanupDays, minScore)
-    console.log(`Cleaned up: ${cleanup.news} news, ${cleanup.media} media, ${cleanup.tweets} tweets`)
+    const cleanupDays = parseInt(await getSetting('curation.cleanup_days') || '30')
+    const cleanup = await cleanupOldContent(cleanupDays, minScore)
+    console.log(`Cleaned up: ${cleanup.news} news, ${cleanup.media} media`)
 
-    // 9. Log curation run
-    const completedAt = new Date().toISOString()
-    logCurationRun({
+    // 7. Log curation run
+    await logCurationRun({
       run_id: runId,
-      source: 'all',
-      items_fetched: stats.news.fetched + stats.media.fetched + stats.tweets.fetched,
-      items_added: stats.news.added + stats.media.added + stats.tweets.added,
-      items_updated: stats.news.updated + stats.media.updated + stats.tweets.updated,
-      items_skipped: stats.news.skipped + stats.media.skipped + stats.tweets.skipped,
+      source: 'media',
+      items_fetched: stats.news.fetched + stats.media.fetched,
+      items_added: stats.news.added + stats.media.added,
+      items_updated: 0,
+      items_skipped: stats.news.skipped + stats.media.skipped,
       errors: errors.length > 0 ? JSON.stringify(errors) : undefined,
       started_at: startedAt,
-      completed_at: completedAt,
+      completed_at: new Date().toISOString(),
     })
-
-    closeDB()
 
     return res.status(200).json({
       success: true,
       runId,
       startedAt,
-      completedAt,
+      completedAt: new Date().toISOString(),
       stats,
       cleanup,
       errors: errors.length > 0 ? errors : undefined,
     })
 
   } catch (error) {
-    console.error('Curation error:', error)
-    closeDB()
+    console.error('Media curation error:', error)
     return res.status(500).json({
       success: false,
-      error: 'Curation failed',
+      runId,
+      error: 'Media curation failed',
       details: error instanceof Error ? error.message : 'Unknown error',
     })
   }
