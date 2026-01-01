@@ -3,13 +3,11 @@
   "version": "2.0.0",
   "description": "TVK API - AI Curation with Turso DB",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "tsc"
+    "dev": "vercel dev"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
-    "@vercel/node": "^3.0.0",
-    "dotenv": "^17.2.3"
+    "@vercel/node": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
