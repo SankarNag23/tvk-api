@@ -1,29 +1,28 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { initDB, getTweets, getLastCurationTime, closeDB } from '../lib/db'
+import { getTweets, getLastCurationTime } from '../lib/db'
 
+/**
+ * GET /api/tweets
+ * Returns tweets from Turso database
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600')
+  res.setHeader('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=900')
 
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   try {
-    initDB()
-
     // Parse query parameters
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 50)
     const offset = parseInt(req.query.offset as string) || 0
-    const featured = req.query.featured === 'true'
 
-    // Fetch tweets from database
-    const tweets = getTweets({ limit, offset, featured })
-    const lastCurated = getLastCurationTime()
-
-    closeDB()
+    // Fetch tweets from Turso database
+    const tweets = await getTweets({ limit, offset })
+    const lastCurated = await getLastCurationTime()
 
     // Transform response for frontend compatibility
     const transformedTweets = tweets.map(item => ({
@@ -47,13 +46,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       filters: {
         limit,
         offset,
-        featured,
       },
     })
 
   } catch (error) {
     console.error('Tweets API error:', error)
-    closeDB()
     return res.status(500).json({
       success: false,
       error: 'Failed to fetch tweets',

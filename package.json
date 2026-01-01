@@ -1,12 +1,9 @@
 {
   "name": "tvk-api",
   "version": "2.0.0",
-  "description": "TVK API - AI Curation & Heavy Endpoints with SQLite",
+  "description": "TVK API - AI Curation with Turso DB",
   "scripts": {
     "dev": "vercel dev",
-    "init-db": "npx ts-node scripts/init-db.ts",
-    "curate": "npx ts-node scripts/run-curation.ts",
-    "curate-hero": "npx ts-node scripts/curate-hero.ts",
     "build": "tsc"
   },
   "dependencies": {
@@ -16,7 +13,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "ts-node": "^10.9.0",
     "typescript": "^5.0.0",
     "vercel": "^50.1.3"
   }
