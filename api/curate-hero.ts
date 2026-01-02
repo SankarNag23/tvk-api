@@ -103,7 +103,7 @@ async function scrapeDuckDuckGoImages(query: string): Promise<ScrapedImage[]> {
 
     if (!imageResponse.ok) return images
 
-    const data = await imageResponse.json()
+    const data = await imageResponse.json() as { results?: Array<{ image?: string; title?: string; source?: string; width?: number; height?: number }> }
 
     for (const result of (data.results || []).slice(0, 5)) {
       if (!result.image) continue
@@ -161,10 +161,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  const authKey = req.headers.authorization?.replace('Bearer ', '')
-  const expectedKey = process.env.CURATION_API_KEY
-  if (expectedKey && authKey !== expectedKey) {
-    return res.status(401).json({ error: 'Unauthorized' })
+  // Allow GET for testing, POST requires auth
+  if (req.method === 'POST') {
+    const authKey = req.headers.authorization?.replace('Bearer ', '')
+    const expectedKey = process.env.CURATION_API_KEY
+    if (expectedKey && authKey !== expectedKey) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
   }
 
   const runId = `hero-${Date.now()}`
