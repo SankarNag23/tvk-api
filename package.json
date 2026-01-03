@@ -3,7 +3,8 @@
   "version": "2.0.0",
   "description": "TVK API - AI Curation with Turso DB",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "build": "tsc"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",
