@@ -50,6 +50,15 @@ const RSS_FEEDS = [
   { name: 'Tamilaga Vettri', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=en-IN&gl=IN&ceid=IN:en' },
 ]
 
+// TVK-themed fallback images for news without OG images
+const TVK_FALLBACK_IMAGES = [
+  'https://pbs.twimg.com/profile_images/1820095725199663104/F-sJsNxg_400x400.jpg', // TVK logo
+  'https://pbs.twimg.com/media/GXhQZ6jWQAApzPd?format=jpg&name=medium', // Vijay speech
+  'https://pbs.twimg.com/media/GXhQZ6hXMAA6XBd?format=jpg&name=medium', // TVK rally
+  'https://pbs.twimg.com/media/GYG1aBVWIAAU1hO?format=jpg&name=medium', // TVK event
+  'https://pbs.twimg.com/media/GXi9RcgXcAAXKY2?format=jpg&name=medium', // Vijay meeting
+]
+
 // Decode Google News URL to get actual article URL
 function decodeGoogleNewsUrl(url: string): string | null {
   try {
@@ -226,33 +235,36 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         // Fetch OG metadata from actual article
         const ogData = await fetchOGMetadata(link)
 
-        // Skip if we couldn't get an image
-        if (!ogData.image) {
-          console.log(`Skipping: no image for "${title.substring(0, 40)}..."`)
-          continue
+        // Use OG image or fallback to TVK-themed images
+        const imageUrl = ogData.image || TVK_FALLBACK_IMAGES[news.length % TVK_FALLBACK_IMAGES.length]
+
+        if (ogData.image) {
+          console.log(`Found: ${title.substring(0, 40)}... with OG image`)
+        } else {
+          console.log(`Found: ${title.substring(0, 40)}... using fallback image`)
         }
 
-        console.log(`Found: ${title.substring(0, 40)}... with image`)
-
-        // Add news item with real image and description
+        // Add news item with image (OG or fallback)
         news.push({
           type: 'news',
           url: link,
-          thumbnail_url: ogData.image,
+          thumbnail_url: imageUrl,
           title: title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&'),
           description: ogData.description || title,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
-        // Also add the image as separate media for photo gallery
-        news.push({
-          type: 'image',
-          url: ogData.image,
-          title: title.trim().replace(/<[^>]*>/g, ''),
-          source: feed.name,
-          published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
-        })
+        // Only add as separate image if we got a real OG image (not fallback)
+        if (ogData.image) {
+          news.push({
+            type: 'image',
+            url: ogData.image,
+            title: title.trim().replace(/<[^>]*>/g, ''),
+            source: feed.name,
+            published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
+          })
+        }
 
         // Delay between fetches
         await new Promise(r => setTimeout(r, 200))
@@ -336,10 +348,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       if (item.type === 'news') {
-        if (await newsUrlExists(item.url)) {
-          stats.exists++
-          continue
-        }
+        const exists = await newsUrlExists(item.url)
+        // Use UPSERT - insert or update existing items (to add images to items without them)
         const success = await insertNews({
           id: `news-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           title: item.title,
@@ -353,7 +363,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: 'approved',
           published_at: item.published_at,
         })
-        if (success) stats.added_news++
+        if (success) {
+          if (exists) {
+            stats.exists++ // Updated existing
+          } else {
+            stats.added_news++ // Added new
+          }
+        }
       } else { // 'image' or 'video'
         if (await mediaUrlExists(item.url)) {
           stats.exists++
