@@ -404,14 +404,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       completed_at: new Date().toISOString(),
     })
 
-    // Debug: Sample of scraped items to verify thumbnail_url is set
-    const debugSample = uniqueMedia.slice(0, 3).map(m => ({
-      type: m.type,
-      title: m.title?.substring(0, 30),
-      has_thumbnail: !!m.thumbnail_url,
-      thumbnail_preview: m.thumbnail_url?.substring(0, 50),
-    }))
-
     return res.status(200).json({
       success: true,
       runId,
@@ -420,7 +412,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stats,
       cleaned,
       message: `Added ${totalAdded} items (${stats.added_news} news, ${stats.added_media} media)`,
-      debug: { sampleItems: debugSample },
     })
 
   } catch (error) {
@@ -432,4 +423,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       details: error instanceof Error ? error.message : 'Unknown error',
     })
   }
-}// Force deployment 1767482788
+}

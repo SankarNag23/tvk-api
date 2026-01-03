@@ -6,6 +6,15 @@ import { getNews, getLastCurationTime, getStats } from '../lib/db'
  * Returns AI-curated news from Turso database
  * Curated every 4 hours by GitHub Action
  */
+
+// TVK fallback images for news without images
+const TVK_FALLBACK_IMAGES = [
+  'https://pbs.twimg.com/profile_images/1820095725199663104/F-sJsNxg_400x400.jpg',
+  'https://pbs.twimg.com/media/GXhQZ6jWQAApzPd?format=jpg&name=medium',
+  'https://pbs.twimg.com/media/GXhQZ6hXMAA6XBd?format=jpg&name=medium',
+  'https://pbs.twimg.com/media/GYG1aBVWIAAU1hO?format=jpg&name=medium',
+  'https://pbs.twimg.com/media/GXi9RcgXcAAXKY2?format=jpg&name=medium',
+]
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -40,12 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const stats = await getStats()
 
     // Transform response for frontend compatibility
-    const transformedNews = news.map(item => ({
+    // Use fallback images for news without images
+    const transformedNews = news.map((item, index) => ({
       id: item.id,
       title: item.title,
       description: item.description,
       url: item.url,
-      image: item.image_url || '',
+      image: item.image_url || TVK_FALLBACK_IMAGES[index % TVK_FALLBACK_IMAGES.length],
       source: item.source,
       language: item.language,
       category: item.category,
