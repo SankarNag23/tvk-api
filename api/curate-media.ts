@@ -432,4 +432,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       details: error instanceof Error ? error.message : 'Unknown error',
     })
   }
-}
+}// Force deployment 1767482788
