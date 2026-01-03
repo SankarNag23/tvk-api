@@ -1,5 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { initDB, insertMedia, mediaUrlExists, cleanupOldContent, logCurationRun } from '../lib/db'
+import {
+  initDB,
+  insertMedia,
+  mediaUrlExists,
+  insertNews,
+  newsUrlExists,
+  cleanupOldContent,
+  logCurationRun
+} from '../lib/db'
 
 /**
  * POST /api/curate-media
@@ -224,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const runId = `media-${Date.now()}`
   const startedAt = new Date().toISOString()
-  const stats = { videos: 0, news: 0, images: 0, added: 0, skipped: 0, exists: 0 }
+  const stats = { videos: 0, news: 0, images: 0, added_news: 0, added_media: 0, skipped: 0, exists: 0 }
 
   try {
     console.log('Starting media curation:', runId)
@@ -251,46 +259,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       new Map(allMedia.map(m => [m.url, m])).values()
     )
 
-    // Validate and insert
-    for (const media of uniqueMedia) {
-      if (await mediaUrlExists(media.url)) {
-        stats.exists++
-        continue
-      }
-
+    // Validate and insert into the correct tables
+    for (const item of uniqueMedia) {
       // Validate URL (skip for YouTube - known good)
-      if (!media.url.includes('youtube.com') && !media.url.includes('youtu.be')) {
-        const valid = await validateUrl(media.url)
-        if (!valid) {
+      if (!item.url.includes('youtube.com') && !item.url.includes('youtu.be')) {
+        if (!(await validateUrl(item.url))) {
           stats.skipped++
           continue
         }
       }
 
-      const success = await insertMedia({
-        id: `${media.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        type: media.type,
-        url: media.url,
-        thumbnail_url: media.thumbnail_url,
-        embed_url: media.embed_url,
-        title: media.title,
-        description: media.description,
-        source: media.source,
-        relevance_score: 80,
-        status: 'approved',
-        published_at: media.published_at,
-      })
-
-      if (success) {
-        stats.added++
+      if (item.type === 'news') {
+        if (await newsUrlExists(item.url)) {
+          stats.exists++
+          continue
+        }
+        const success = await insertNews({
+          id: `news-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: item.title,
+          description: item.description,
+          url: item.url,
+          image_url: item.thumbnail_url, // Correct mapping
+          source: item.source,
+          language: item.title.match(/[\u0B80-\u0BFF]/) ? 'ta' : 'en', // Basic Tamil check
+          category: 'general', // Or implement categorization logic
+          relevance_score: 80,
+          status: 'approved',
+          published_at: item.published_at,
+        })
+        if (success) stats.added_news++
+      } else { // 'image' or 'video'
+        if (await mediaUrlExists(item.url)) {
+          stats.exists++
+          continue
+        }
+        const success = await insertMedia({
+          id: `${item.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: item.type,
+          url: item.url,
+          thumbnail_url: item.thumbnail_url,
+          embed_url: item.embed_url,
+          title: item.title,
+          description: item.description,
+          source: item.source,
+          relevance_score: 80,
+          status: 'approved',
+          published_at: item.published_at,
+        })
+        if (success) stats.added_media++
       }
     }
 
+    const totalAdded = stats.added_news + stats.added_media
     await logCurationRun({
       run_id: runId,
       source: 'media',
       items_fetched: allMedia.length,
-      items_added: stats.added,
+      items_added: totalAdded,
       items_updated: 0,
       items_skipped: stats.skipped,
       started_at: startedAt,
@@ -304,7 +329,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       completedAt: new Date().toISOString(),
       stats,
       cleaned,
-      message: `Added ${stats.added} media items (${stats.videos} videos, ${stats.news} news, ${stats.images} images)`,
+      message: `Added ${totalAdded} items (${stats.added_news} news, ${stats.added_media} media)`,
     })
 
   } catch (error) {

@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       title: item.title,
       description: item.description,
       url: item.url,
-      image: item.image_url || '',
+      image: item.thumbnail_url || '',
       source: item.source,
       language: item.language,
       category: item.category,
