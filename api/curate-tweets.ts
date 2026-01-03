@@ -1,6 +1,41 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertTweet, tweetExists, logCurationRun } from '../lib/db'
 
+// Type definitions for the Twitter API v2 response
+interface TwitterUser {
+  id: string;
+  name: string;
+  username: string;
+  profile_image_url: string;
+}
+
+interface Tweet {
+  id: string;
+  text: string;
+  author_id: string;
+  created_at: string;
+  public_metrics: {
+    retweet_count: number;
+    reply_count: number;
+    like_count: number;
+    quote_count: number;
+    impression_count: number;
+  };
+}
+
+interface TwitterApiResponse {
+  data?: Tweet[];
+  includes?: {
+    users?: TwitterUser[];
+  };
+  meta: {
+    newest_id: string;
+    oldest_id: string;
+    result_count: number;
+  };
+}
+
+
 // This is a simplified version of the content validation logic from curate-media.ts
 // We can expand this as needed.
 const NEGATIVE_KEYWORDS = [
@@ -21,7 +56,7 @@ function isValidContent(text: string): boolean {
   return true
 }
 
-async function fetchRecentTweets(query: string, bearerToken: string) {
+async function fetchRecentTweets(query: string, bearerToken: string): Promise<TwitterApiResponse> {
   const url = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent(query)}&expansions=author_id&tweet.fields=created_at,public_metrics&user.fields=profile_image_url`
   const response = await fetch(url, {
     headers: {
@@ -34,7 +69,7 @@ async function fetchRecentTweets(query: string, bearerToken: string) {
     throw new Error(`Twitter API failed with status ${response.status}: ${errorBody}`)
   }
 
-  return response.json()
+  return response.json() as Promise<TwitterApiResponse>
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -71,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     const tweets = twitterResponse.data || []
     const users = twitterResponse.includes?.users || []
-    const userMap = new Map(users.map((user: any) => [user.id, user]))
+    const userMap = new Map(users.map((user) => [user.id, user]))
     stats.fetched = tweets.length
 
     for (const tweet of tweets) {
