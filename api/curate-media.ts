@@ -141,6 +141,40 @@ async function scrapeYouTubeVideos(): Promise<ScrapedMedia[]> {
   return videos
 }
 
+// Fetch OG metadata (image, description) from actual article URL
+async function fetchOGMetadata(url: string): Promise<{ image?: string; description?: string }> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      redirect: 'follow',
+    })
+
+    if (!response.ok) return {}
+
+    const html = await response.text()
+
+    // Extract OG image
+    const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1] ||
+                    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1]
+
+    // Extract OG description
+    const ogDesc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                   html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)?.[1] ||
+                   html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]
+
+    return {
+      image: ogImage?.startsWith('http') ? ogImage : undefined,
+      description: ogDesc?.replace(/&amp;/g, '&').replace(/&quot;/g, '"').substring(0, 300),
+    }
+  } catch {
+    return {}
+  }
+}
+
 // Scrape news from RSS feeds
 async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
   const news: ScrapedMedia[] = []
@@ -156,40 +190,44 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
       const xml = await response.text()
       const items = xml.match(/<item>([\s\S]*?)<\/item>/g) || []
 
-      for (const item of items.slice(0, 15)) {
+      for (const item of items.slice(0, 10)) { // Limit to 10 per feed for speed
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
         const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
-        const description = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
-        // Extract image from content or media tags
-        const imageMatch = item.match(/(?:url|src)=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)/i) ||
-                          item.match(/<media:content[^>]+url=["']([^"']+)/i) ||
-                          item.match(/<enclosure[^>]+url=["']([^"']+)/i)
+        if (!link || !isValidContent(title)) continue
 
-        if (!link || !isValidContent(title + ' ' + description)) continue
+        // Fetch actual article to get OG image and description
+        const ogData = await fetchOGMetadata(link.trim())
 
-        // Add news item
+        // Skip if we couldn't get an image
+        if (!ogData.image) {
+          console.log(`Skipping news without image: ${title.substring(0, 50)}...`)
+          continue
+        }
+
+        // Add news item with real image and description
         news.push({
           type: 'news',
           url: link.trim(),
-          thumbnail_url: imageMatch?.[1],
+          thumbnail_url: ogData.image,
           title: title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&'),
-          description: description.replace(/<[^>]*>/g, '').substring(0, 300),
+          description: ogData.description || title,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
-        // Also add image as separate media if found and valid
-        if (imageMatch?.[1] && imageMatch[1].startsWith('http')) {
-          news.push({
-            type: 'image',
-            url: imageMatch[1],
-            title: title.trim().replace(/<[^>]*>/g, ''),
-            source: feed.name,
-            published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
-          })
-        }
+        // Also add the image as separate media
+        news.push({
+          type: 'image',
+          url: ogData.image,
+          title: title.trim().replace(/<[^>]*>/g, ''),
+          source: feed.name,
+          published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
+        })
+
+        // Small delay to be respectful to servers
+        await new Promise(r => setTimeout(r, 200))
       }
 
       await new Promise(r => setTimeout(r, 300))
