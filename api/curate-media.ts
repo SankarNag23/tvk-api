@@ -42,13 +42,18 @@ const NEGATIVE_KEYWORDS = [
   'cricket', 'football', 'sports', 'match', 'score', 'goal', 'century', 'bowling', 'batting', 'ipl',
 ]
 
-// Tamil news RSS feeds
+// Direct Tamil news RSS feeds (not Google News - they require JS redirects)
 const RSS_FEEDS = [
-  { name: 'Google News TVK', url: 'https://news.google.com/rss/search?q=TVK+Vijay+party&hl=en-IN&gl=IN&ceid=IN:en' },
-  { name: 'Google News Tamil TVK', url: 'https://news.google.com/rss/search?q=தவெக+விஜய்&hl=ta&gl=IN&ceid=IN:ta' },
-  { name: 'Google News Tamilaga Vettri', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=en-IN&gl=IN&ceid=IN:en' },
-  { name: 'Google News Sengottaiyan', url: 'https://news.google.com/rss/search?q=Sengottaiyan+TVK&hl=en-IN&gl=IN&ceid=IN:en' },
-  { name: 'Google News Bussy Anand', url: 'https://news.google.com/rss/search?q=Bussy+Anand+TVK&hl=en-IN&gl=IN&ceid=IN:en' },
+  // The Hindu - has images in RSS
+  { name: 'The Hindu TN', url: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
+  // NDTV Tamil Nadu
+  { name: 'NDTV TN', url: 'https://feeds.feedburner.com/ndtvnews-tamil-nadu-news' },
+  // Times of India Chennai
+  { name: 'TOI Chennai', url: 'https://timesofindia.indiatimes.com/rssfeeds/2950623.cms' },
+  // India Today Tamil Nadu
+  { name: 'India Today TN', url: 'https://www.indiatoday.in/rss/1206578' },
+  // News18 Tamil Nadu
+  { name: 'News18 TN', url: 'https://hindi.news18.com/rss/khabar/nation/tamil-nadu.xml' },
 ]
 
 // YouTube channels for Tamil news
@@ -193,41 +198,65 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
       for (const item of items.slice(0, 10)) { // Limit to 10 per feed for speed
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
         const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
+        const description = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
         if (!link || !isValidContent(title)) continue
 
-        // Fetch actual article to get OG image and description
-        const ogData = await fetchOGMetadata(link.trim())
+        // Try to extract image from RSS first (many feeds include images)
+        let imageUrl =
+          item.match(/<media:content[^>]+url=["']([^"']+)/i)?.[1] ||
+          item.match(/<media:thumbnail[^>]+url=["']([^"']+)/i)?.[1] ||
+          item.match(/<enclosure[^>]+url=["']([^"']+(?:jpg|jpeg|png|webp))/i)?.[1] ||
+          item.match(/<image>.*?<url>([^<]+)<\/url>/is)?.[1] ||
+          description.match(/src=["']([^"']+(?:jpg|jpeg|png|webp)[^"']*)/i)?.[1] ||
+          description.match(/(https?:\/\/[^\s"'<>]+(?:jpg|jpeg|png|webp))/i)?.[1]
 
-        // Skip if we couldn't get an image
-        if (!ogData.image) {
-          console.log(`Skipping news without image: ${title.substring(0, 50)}...`)
+        // Clean description of HTML
+        const cleanDesc = description
+          .replace(/<[^>]*>/g, '')
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+          .replace(/&nbsp;/g, ' ')
+          .trim()
+          .substring(0, 300)
+
+        // If no image in RSS, try fetching from article
+        if (!imageUrl) {
+          const ogData = await fetchOGMetadata(link.trim())
+          imageUrl = ogData.image
+        }
+
+        // Skip if we couldn't get an image anywhere
+        if (!imageUrl || !imageUrl.startsWith('http')) {
+          console.log(`Skipping: no image for "${title.substring(0, 40)}..."`)
           continue
         }
+
+        console.log(`Found: ${title.substring(0, 40)}... with image`)
 
         // Add news item with real image and description
         news.push({
           type: 'news',
           url: link.trim(),
-          thumbnail_url: ogData.image,
+          thumbnail_url: imageUrl,
           title: title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&'),
-          description: ogData.description || title,
+          description: cleanDesc || title,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
-        // Also add the image as separate media
+        // Also add the image as separate media for photo gallery
         news.push({
           type: 'image',
-          url: ogData.image,
+          url: imageUrl,
           title: title.trim().replace(/<[^>]*>/g, ''),
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
         // Small delay to be respectful to servers
-        await new Promise(r => setTimeout(r, 200))
+        await new Promise(r => setTimeout(r, 150))
       }
 
       await new Promise(r => setTimeout(r, 300))
