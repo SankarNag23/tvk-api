@@ -295,7 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const success = await insertMedia({
           id: `${item.type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          type: item.type,
+          type: item.type as 'image' | 'video',
           url: item.url,
           thumbnail_url: item.thumbnail_url,
           embed_url: item.embed_url,
