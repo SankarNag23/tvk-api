@@ -20,13 +20,18 @@ interface ScrapedMedia {
   published_at?: string
 }
 
-// Keywords to EXCLUDE (negative/opposition content)
+// Keywords to EXCLUDE (negative/opposition/irrelevant content)
 const NEGATIVE_KEYWORDS = [
-  'against', 'oppose', 'criticize', 'attack', 'slam', 'fail', 'flop', 'controversy',
-  'arrest', 'case', 'complaint', 'troll', 'mock', 'defeat', 'scam', 'scandal',
+  // Political Opposition
   'dmk', 'admk', 'aiadmk', 'bjp', 'congress', 'pmk',
   'stalin', 'edappadi', 'eps', 'ops', 'annamalai', 'seeman',
+  // Negative Sentiment
+  'against', 'oppose', 'criticize', 'attack', 'slam', 'fail', 'flop', 'controversy',
+  'arrest', 'case', 'complaint', 'troll', 'mock', 'defeat', 'scam', 'scandal',
+  // Other Famous People named Vijay
   'vijay sethupathi', 'vijay devarakonda', 'vijay antony',
+  // Irrelevant Topics (e.g., sports)
+  'cricket', 'football', 'sports', 'match', 'score', 'goal', 'century', 'bowling', 'batting', 'ipl',
 ]
 
 // Tamil news RSS feeds
@@ -53,20 +58,32 @@ const YOUTUBE_CHANNELS = [
 function isValidContent(text: string): boolean {
   const lower = text.toLowerCase()
 
-  // Must contain TVK-related keywords
-  const hasTVK = lower.includes('tvk') ||
-                 lower.includes('vijay') ||
-                 lower.includes('விஜய்') ||
-                 lower.includes('தவெக') ||
-                 lower.includes('tamilaga vettri') ||
-                 lower.includes('sengottaiyan') ||
-                 lower.includes('செங்கோட்டையன்') ||
-                 lower.includes('bussy anand') ||
-                 lower.includes('புஸ்ஸி')
+  // Tier 1: Strong, specific keywords that are unambiguously about the party.
+  const hasSpecificTVKKeyword = lower.includes('tvk') ||
+                                lower.includes('தவெக') ||
+                                lower.includes('tamilaga vettri') ||
+                                lower.includes('sengottaiyan') ||
+                                lower.includes('செங்கோட்டையன்') ||
+                                lower.includes('bussy anand') ||
+                                lower.includes('புஸ்ஸி');
 
-  if (!hasTVK) return false
+  // Tier 2: The ambiguous keyword "Vijay" requires additional context to be considered valid.
+  const hasVijay = lower.includes('vijay') || lower.includes('விஜய்');
+  const hasPoliticalContext = lower.includes('party') ||
+                              lower.includes('political') ||
+                              lower.includes('leader') ||
+                              lower.includes('kazhagam') ||
+                              lower.includes('arivu') || // For words like அறிக்கை (announcement)
+                              lower.includes('thalaivar') || // Leader
+                              lower.includes('actor vijay') || // Differentiates from other Vijays
+                              lower.includes('tamil');
 
-  // Must NOT contain negative/opposition keywords
+  // A news item is considered relevant if it has a specific TVK keyword OR the keyword "Vijay" with political context.
+  const isRelevant = hasSpecificTVKKeyword || (hasVijay && hasPoliticalContext);
+
+  if (!isRelevant) return false
+
+  // Must NOT contain any of the negative or irrelevant keywords.
   const hasNegative = NEGATIVE_KEYWORDS.some(kw => lower.includes(kw))
   if (hasNegative) return false
 
