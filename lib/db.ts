@@ -306,7 +306,10 @@ export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at
             ON CONFLICT(url) DO UPDATE SET
               title = excluded.title,
               description = excluded.description,
-              image_url = COALESCE(excluded.image_url, news.image_url),
+              image_url = CASE
+                WHEN excluded.image_url IS NOT NULL AND excluded.image_url != '' THEN excluded.image_url
+                ELSE COALESCE(news.image_url, excluded.image_url)
+              END,
               relevance_score = excluded.relevance_score,
               updated_at = datetime('now')`,
       args: [
