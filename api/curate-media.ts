@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { initDB, insertMedia, mediaExists, cleanupExpiredMedia, logCurationRun } from '../lib/db'
+import { initDB, insertMedia, mediaUrlExists, cleanupOldContent, logCurationRun } from '../lib/db'
 
 /**
  * POST /api/curate-media
@@ -213,8 +213,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Starting media curation:', runId)
     await initDB()
 
-    // Cleanup expired media
-    const cleaned = await cleanupExpiredMedia()
+    // Cleanup old media
+    const cleaned = await cleanupOldContent()
 
     // Scrape all sources
     console.log('Scraping YouTube videos...')
@@ -236,7 +236,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Validate and insert
     for (const media of uniqueMedia) {
-      if (await mediaExists(media.url)) {
+      if (await mediaUrlExists(media.url)) {
         stats.exists++
         continue
       }
