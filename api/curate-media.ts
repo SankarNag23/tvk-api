@@ -42,19 +42,33 @@ const NEGATIVE_KEYWORDS = [
   'cricket', 'football', 'sports', 'match', 'score', 'goal', 'century', 'bowling', 'batting', 'ipl',
 ]
 
-// Direct Tamil news RSS feeds (not Google News - they require JS redirects)
+// Google News RSS feeds for TVK-specific news
 const RSS_FEEDS = [
-  // The Hindu - has images in RSS
-  { name: 'The Hindu TN', url: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
-  // NDTV Tamil Nadu
-  { name: 'NDTV TN', url: 'https://feeds.feedburner.com/ndtvnews-tamil-nadu-news' },
-  // Times of India Chennai
-  { name: 'TOI Chennai', url: 'https://timesofindia.indiatimes.com/rssfeeds/2950623.cms' },
-  // India Today Tamil Nadu
-  { name: 'India Today TN', url: 'https://www.indiatoday.in/rss/1206578' },
-  // News18 Tamil Nadu
-  { name: 'News18 TN', url: 'https://hindi.news18.com/rss/khabar/nation/tamil-nadu.xml' },
+  { name: 'TVK Vijay News', url: 'https://news.google.com/rss/search?q=TVK+Vijay+party&hl=en-IN&gl=IN&ceid=IN:en' },
+  { name: 'TVK Tamil News', url: 'https://news.google.com/rss/search?q=தமிழக+வெற்றி+கழகம்&hl=ta&gl=IN&ceid=IN:ta' },
+  { name: 'Vijay Political', url: 'https://news.google.com/rss/search?q=Vijay+political+party+Tamil&hl=en-IN&gl=IN&ceid=IN:en' },
+  { name: 'Tamilaga Vettri', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=en-IN&gl=IN&ceid=IN:en' },
 ]
+
+// Decode Google News URL to get actual article URL
+function decodeGoogleNewsUrl(url: string): string | null {
+  try {
+    // Google News URLs contain base64 encoded article URLs
+    // Format: https://news.google.com/rss/articles/CBMi...
+    const match = url.match(/articles\/([A-Za-z0-9_-]+)/)
+    if (!match) return url
+
+    const encoded = match[1]
+    // Try to decode - Google uses modified base64
+    const decoded = Buffer.from(encoded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+
+    // Extract URL from decoded string (usually starts with http)
+    const urlMatch = decoded.match(/(https?:\/\/[^\s"'<>]+)/i)
+    return urlMatch?.[1] || url
+  } catch {
+    return url
+  }
+}
 
 // YouTube channels for Tamil news
 const YOUTUBE_CHANNELS = [
@@ -195,40 +209,25 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
       const xml = await response.text()
       const items = xml.match(/<item>([\s\S]*?)<\/item>/g) || []
 
-      for (const item of items.slice(0, 10)) { // Limit to 10 per feed for speed
+      for (const item of items.slice(0, 8)) { // Limit per feed for speed
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
-        const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
-        const description = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/)?.[1] || ''
+        let link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
         if (!link || !isValidContent(title)) continue
 
-        // Try to extract image from RSS first (many feeds include images)
-        let imageUrl =
-          item.match(/<media:content[^>]+url=["']([^"']+)/i)?.[1] ||
-          item.match(/<media:thumbnail[^>]+url=["']([^"']+)/i)?.[1] ||
-          item.match(/<enclosure[^>]+url=["']([^"']+(?:jpg|jpeg|png|webp))/i)?.[1] ||
-          item.match(/<image>.*?<url>([^<]+)<\/url>/is)?.[1] ||
-          description.match(/src=["']([^"']+(?:jpg|jpeg|png|webp)[^"']*)/i)?.[1] ||
-          description.match(/(https?:\/\/[^\s"'<>]+(?:jpg|jpeg|png|webp))/i)?.[1]
-
-        // Clean description of HTML
-        const cleanDesc = description
-          .replace(/<[^>]*>/g, '')
-          .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-          .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-          .replace(/&nbsp;/g, ' ')
-          .trim()
-          .substring(0, 300)
-
-        // If no image in RSS, try fetching from article
-        if (!imageUrl) {
-          const ogData = await fetchOGMetadata(link.trim())
-          imageUrl = ogData.image
+        // Decode Google News URL to get real article URL
+        const realUrl = decodeGoogleNewsUrl(link.trim())
+        if (realUrl && realUrl !== link) {
+          console.log(`Decoded URL: ${realUrl.substring(0, 60)}...`)
+          link = realUrl
         }
 
-        // Skip if we couldn't get an image anywhere
-        if (!imageUrl || !imageUrl.startsWith('http')) {
+        // Fetch OG metadata from actual article
+        const ogData = await fetchOGMetadata(link)
+
+        // Skip if we couldn't get an image
+        if (!ogData.image) {
           console.log(`Skipping: no image for "${title.substring(0, 40)}..."`)
           continue
         }
@@ -238,10 +237,10 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         // Add news item with real image and description
         news.push({
           type: 'news',
-          url: link.trim(),
-          thumbnail_url: imageUrl,
+          url: link,
+          thumbnail_url: ogData.image,
           title: title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&'),
-          description: cleanDesc || title,
+          description: ogData.description || title,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
@@ -249,14 +248,14 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         // Also add the image as separate media for photo gallery
         news.push({
           type: 'image',
-          url: imageUrl,
+          url: ogData.image,
           title: title.trim().replace(/<[^>]*>/g, ''),
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
-        // Small delay to be respectful to servers
-        await new Promise(r => setTimeout(r, 150))
+        // Delay between fetches
+        await new Promise(r => setTimeout(r, 200))
       }
 
       await new Promise(r => setTimeout(r, 300))
