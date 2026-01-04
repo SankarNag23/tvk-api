@@ -1,18 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
 
-// Default RSS sources - Tamil news channels covering politics/cinema
-// Using correct commonfeeds pattern for News18 Tamil which has <media:content> images
+// Default RSS sources - News18 Tamil with commonfeeds pattern (has <media:content> images)
+// Only using verified working feeds
 const DEFAULT_RSS_SOURCES = [
-  // News18 Tamil - Correct RSS URLs with images (commonfeeds pattern)
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
-  { name: 'News18 Tamil - Cinema', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/movies.xml', category: 'cinema' },
-  { name: 'News18 Tamil - India', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/india.xml', category: 'politics' },
-
-  // Other Tamil news sources with images
-  { name: 'OneIndia Tamil', url: 'https://tamil.oneindia.com/rss/tamil-news-fb.xml', category: 'politics' },
-  { name: 'Behindwoods', url: 'https://www.behindwoods.com/rss/behindwoods-news.xml', category: 'cinema' },
+  { name: 'News18 Tamil - Entertainment', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/entertainment.xml', category: 'cinema' },
 ]
 
 // Keywords to match (English and Tamil)
@@ -202,7 +196,7 @@ async function parseRssFeed(url: string, sourceName: string): Promise<RssItem[]>
     // Simple XML parsing for RSS items
     const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/gi) || []
 
-    for (const itemXml of itemMatches.slice(0, 10)) { // Limit to 10 items per feed
+    for (const itemXml of itemMatches.slice(0, 50)) { // Scan up to 50 items per feed for TVK news
       const title = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim()
       const link = itemXml.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim()
       const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim()
