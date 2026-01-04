@@ -298,8 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalAdded = 0
     let totalSkipped = 0
     const errors: string[] = []
-    const skipReasons = { duplicate: 0, keyword: 0, image: 0, sentiment: 0, insertFail: 0 }
-    const insertErrors: string[] = []
+    const skipReasons = { duplicate: 0, keyword: 0, image: 0, sentiment: 0 }
 
     // Process each RSS source
     for (const source of rssSources) {
@@ -365,7 +364,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             continue
           }
 
-          console.log(`Attempting insert: ${item.title.substring(0, 50)}... (img: ${!!imageUrl})`)
 
           // Calculate relevance score (50-100)
           const relevanceScore = Math.min(100, 50 + (matchedKeywords.length * 10) + (sentimentScore * 20))
@@ -394,13 +392,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           if (result.success) {
             totalAdded++
-            console.log(`Added: ${item.title.substring(0, 50)}... [${matchedKeywords.join(', ')}]`)
+            console.log(`Added: ${item.title.substring(0, 50)}...`)
           } else {
-            skipReasons.insertFail++
-            if (result.error && insertErrors.length < 3) {
-              insertErrors.push(result.error)
-            }
-            console.log(`Failed to insert: ${item.title.substring(0, 50)}... Error: ${result.error}`)
+            console.log(`Insert failed: ${result.error}`)
           }
         }
       } catch (sourceError: any) {
@@ -437,8 +431,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         skip_reasons: skipReasons,
         cleaned_up: cleanedUp
       },
-      errors: errors.length > 0 ? errors : undefined,
-      insert_errors: insertErrors.length > 0 ? insertErrors : undefined
+      errors: errors.length > 0 ? errors : undefined
     })
 
   } catch (error: any) {
