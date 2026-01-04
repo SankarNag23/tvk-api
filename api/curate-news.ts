@@ -57,6 +57,40 @@ interface RssItem {
   source: string
 }
 
+// Fetch og:image from article page
+async function fetchOgImage(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; TVK-Bot/1.0)',
+        'Accept': 'text/html'
+      },
+      signal: AbortSignal.timeout(5000),
+      redirect: 'follow'
+    })
+
+    if (!response.ok) return null
+
+    const html = await response.text()
+
+    // Extract og:image
+    const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+
+    if (ogImage) return ogImage[1]
+
+    // Try twitter:image
+    const twitterImage = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i)
+
+    if (twitterImage) return twitterImage[1]
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 // Extract image URL from RSS item using multiple methods
 function extractImageUrl(item: any, content: string): string | null {
   // Method 1: media:content
@@ -294,9 +328,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
-          // Skip if no image (but log it for debugging)
-          if (!item.imageUrl) {
-            console.log(`No image: ${item.title.substring(0, 40)}...`)
+          // Try to fetch og:image if no image in RSS
+          let imageUrl = item.imageUrl
+          if (!imageUrl) {
+            console.log(`Fetching og:image for: ${item.title.substring(0, 40)}...`)
+            imageUrl = await fetchOgImage(item.link) || undefined
+          }
+
+          // Skip if still no image
+          if (!imageUrl) {
+            console.log(`No image found: ${item.title.substring(0, 40)}...`)
             totalSkipped++
             continue
           }
@@ -320,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             title: item.title,
             description: item.description,
             url: item.link,
-            image_url: item.imageUrl,
+            image_url: imageUrl,
             source_name: source.name,
             source_url: source.url,
             published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
