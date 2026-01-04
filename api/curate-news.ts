@@ -200,7 +200,7 @@ async function parseRssFeed(url: string, sourceName: string): Promise<RssItem[]>
       const title = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim()
       const link = itemXml.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim()
       const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim()
-      const pubDate = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim()
+      const pubDate = itemXml.match(/<pubDate>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/pubDate>/i)?.[1]?.trim()
 
       if (!title || !link) continue
 
@@ -371,7 +371,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             image_url: imageUrl,
             source_name: source.name,
             source_url: source.url,
-            published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+            published_at: (() => {
+              try {
+                return item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
+              } catch {
+                return new Date().toISOString()
+              }
+            })(),
             keywords_matched: matchedKeywords.join(','),
             sentiment_score: sentimentScore,
             relevance_score: Math.round(relevanceScore),
