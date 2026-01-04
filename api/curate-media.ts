@@ -297,14 +297,42 @@ async function fetchOGMetadata(url: string): Promise<{ image?: string; descripti
                    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)?.[1] ||
                    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]
 
-    // Filter out Google News images (they're just logos, not article images)
+    // Filter out Google News images and other non-article images
     let validImage = ogImage?.startsWith('http') ? ogImage : undefined
-    if (validImage && (
-      validImage.includes('lh3.googleusercontent.com') ||
-      validImage.includes('gstatic.com/gnews') ||
-      validImage.includes('google.com/favicon')
-    )) {
-      validImage = undefined // Force fallback to TVK images
+    if (validImage) {
+      const imgLower = validImage.toLowerCase()
+      // Reject Google-related images (logos, not article images)
+      if (imgLower.includes('lh3.googleusercontent.com') ||
+          imgLower.includes('gstatic.com') ||
+          imgLower.includes('google.com/favicon') ||
+          imgLower.includes('google.com/images')) {
+        console.log(`Rejected Google image: ${validImage.substring(0, 50)}...`)
+        validImage = undefined
+      }
+      // Accept images from known good sources
+      else if (imgLower.includes('dinamalar') ||
+               imgLower.includes('vikatan') ||
+               imgLower.includes('samayam') ||
+               imgLower.includes('thehindu') ||
+               imgLower.includes('indiatoday') ||
+               imgLower.includes('ndtv') ||
+               imgLower.includes('news18') ||
+               imgLower.includes('asianetnews') ||
+               imgLower.includes('deccanherald') ||
+               imgLower.includes('newindianexpress') ||
+               imgLower.includes('oneindia') ||
+               imgLower.includes('cloudfront') ||
+               imgLower.includes('amazonaws') ||
+               imgLower.includes('wp.com') ||
+               imgLower.includes('wordpress')) {
+        console.log(`Found good OG image: ${validImage.substring(0, 60)}...`)
+      }
+      // For other images, check if they look like valid article images
+      else if (validImage.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
+        console.log(`Found article image: ${validImage.substring(0, 60)}...`)
+      } else {
+        console.log(`Unknown image source, keeping: ${validImage.substring(0, 60)}...`)
+      }
     }
 
     // Filter out Google's generic description and HTML
@@ -484,19 +512,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Starting media curation:', runId)
     await initDB()
 
-    // Clean up news with bad images or descriptions
+    // Clean up news with bad images, fallback images, or bad descriptions
+    // Also remove items with fallback images so they can be re-fetched with real OG images
     const db = getTurso()
     const badDataCleanup = await db.execute({
       sql: `DELETE FROM news WHERE
             image_url LIKE '%lh3.googleusercontent.com%' OR
             image_url LIKE '%gstatic.com/gnews%' OR
             image_url LIKE '%pbs.twimg.com%' OR
+            image_url LIKE '%wallpaperaccess.com%' OR
+            image_url LIKE '%rajkaran.in%' OR
+            image_url LIKE '%assettype.com/gulfnews%' OR
             description LIKE '%Comprehensive up-to-date news coverage%' OR
             description LIKE '%<a href=%' OR
             description LIKE '%&lt;a href=%'`,
       args: []
     })
-    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad data`)
+    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad/fallback images`)
 
     // Cleanup old media
     const cleaned = await cleanupOldContent()
