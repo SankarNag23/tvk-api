@@ -435,49 +435,92 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           continue
         }
 
-        // Extract image directly from RSS (the RIGHT way!)
-        // 1. <media:content url="..."> (Media RSS)
-        // 2. <media:thumbnail url="...">
-        // 3. <enclosure url="..." type="image/...">
-        // 4. <img src="..."> in description
+        // Extract image from RSS - check ALL possible sources
         let imageUrl: string | undefined
         let description: string | undefined
 
-        // Try media:content first (most common in news RSS)
-        const mediaContent = item.match(/<media:content[^>]+url=["']([^"']+)["']/i)
-        if (mediaContent?.[1]) {
-          imageUrl = mediaContent[1]
-          console.log(`Found media:content image: ${imageUrl.substring(0, 60)}...`)
+        // Helper to check if URL is a valid image
+        const isImageUrl = (url: string): boolean => {
+          if (!url || !url.startsWith('http')) return false
+          const lower = url.toLowerCase()
+          // Reject logos/icons
+          if (lower.includes('/favicon') || lower.includes('/logo') ||
+              lower.includes('/icon') || lower.endsWith('.ico')) return false
+          return true
         }
 
-        // Try media:thumbnail
+        // 1. <media:content url="...">
         if (!imageUrl) {
-          const mediaThumbnail = item.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
-          if (mediaThumbnail?.[1]) {
-            imageUrl = mediaThumbnail[1]
+          const match = item.match(/<media:content[^>]+url=["']([^"']+)["']/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found media:content: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // 2. <media:thumbnail url="...">
+        if (!imageUrl) {
+          const match = item.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
             console.log(`Found media:thumbnail: ${imageUrl.substring(0, 60)}...`)
           }
         }
 
-        // Try enclosure with image type
+        // 3. <enclosure url="..."> (with or without type)
         if (!imageUrl) {
-          const enclosure = item.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image/i) ||
-                           item.match(/<enclosure[^>]+type=["']image[^"']*["'][^>]+url=["']([^"']+)["']/i)
-          if (enclosure?.[1]) {
-            imageUrl = enclosure[1]
-            console.log(`Found enclosure image: ${imageUrl.substring(0, 60)}...`)
+          const match = item.match(/<enclosure[^>]+url=["']([^"']+)["']/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found enclosure: ${imageUrl.substring(0, 60)}...`)
           }
         }
 
-        // Try img src in description
+        // 4. <image><url>...</url></image> (item level)
         if (!imageUrl) {
-          const descMatch = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)
-          if (descMatch?.[1]) {
-            const imgInDesc = descMatch[1].match(/<img[^>]+src=["']([^"']+)["']/i)
-            if (imgInDesc?.[1]) {
-              imageUrl = imgInDesc[1]
-              console.log(`Found img in description: ${imageUrl.substring(0, 60)}...`)
+          const match = item.match(/<image>[\s\S]*?<url>([^<]+)<\/url>[\s\S]*?<\/image>/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found image>url: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // 5. <img src="..."> anywhere in item
+        if (!imageUrl) {
+          const match = item.match(/<img[^>]+src=["']([^"']+)["']/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found img src: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // 6. <content:encoded> with img
+        if (!imageUrl) {
+          const contentMatch = item.match(/<content:encoded>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/content:encoded>/i)
+          if (contentMatch?.[1]) {
+            const imgMatch = contentMatch[1].match(/<img[^>]+src=["']([^"']+)["']/i)
+            if (imgMatch?.[1] && isImageUrl(imgMatch[1])) {
+              imageUrl = imgMatch[1]
+              console.log(`Found in content:encoded: ${imageUrl.substring(0, 60)}...`)
             }
+          }
+        }
+
+        // 7. src="...image extension" anywhere
+        if (!imageUrl) {
+          const match = item.match(/src=["'](https?:\/\/[^"']+\.(jpg|jpeg|png|webp|gif)[^"']*?)["']/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found src with image ext: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // 8. Any URL with image extension in the item
+        if (!imageUrl) {
+          const match = item.match(/(https?:\/\/[^\s"'<>]+\.(jpg|jpeg|png|webp|gif))/i)
+          if (match?.[1] && isImageUrl(match[1])) {
+            imageUrl = match[1]
+            console.log(`Found image URL: ${imageUrl.substring(0, 60)}...`)
           }
         }
 
@@ -596,11 +639,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Starting media curation:', runId)
     await initDB()
 
-    // Clean up news with bad Google images or bad descriptions
-    // NOTE: We now use TVK fallback images intentionally for Google News items, so don't delete those
+    // Clean up news with fallback/bad images so they can be re-fetched with real images
     const db = getTurso()
     const badDataCleanup = await db.execute({
       sql: `DELETE FROM news WHERE
+            image_url LIKE '%wallpaperaccess.com%' OR
+            image_url LIKE '%rajkaran.in%' OR
+            image_url LIKE '%assettype.com/gulfnews%' OR
             image_url LIKE '%gstatic.com/gnews%' OR
             image_url LIKE '%google.com/images/branding%' OR
             description LIKE '%Comprehensive up-to-date news coverage%' OR
@@ -608,7 +653,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             description LIKE '%&lt;a href=%'`,
       args: []
     })
-    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad data`)
+    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with fallback/bad images`)
 
     // Cleanup old media
     const cleaned = await cleanupOldContent()
