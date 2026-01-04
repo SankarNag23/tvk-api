@@ -250,10 +250,22 @@ function isValidContent(text: string): boolean {
                               lower.includes('political') ||
                               lower.includes('leader') ||
                               lower.includes('kazhagam') ||
-                              lower.includes('arivu') || // For words like அறிக்கை (announcement)
-                              lower.includes('thalaivar') || // Leader
-                              lower.includes('actor vijay') || // Differentiates from other Vijays
-                              lower.includes('tamil');
+                              lower.includes('arivu') ||
+                              lower.includes('thalaivar') ||
+                              lower.includes('actor vijay') ||
+                              lower.includes('tamil') ||
+                              // Tamil political context words
+                              lower.includes('கட்சி') ||        // party
+                              lower.includes('தலைவர்') ||      // leader
+                              lower.includes('அரசியல்') ||     // politics
+                              lower.includes('தேர்தல்') ||     // election
+                              lower.includes('ஆட்சி') ||       // government/rule
+                              lower.includes('முதல்வர்') ||    // chief minister
+                              lower.includes('விமர்சன') ||     // criticism
+                              lower.includes('வாக்கு') ||      // vote
+                              lower.includes('பேச்சு') ||      // speech
+                              lower.includes('கூட்டம்') ||     // meeting/rally
+                              lower.includes('அறிவிப்பு');
 
   // A news item is considered relevant if it has a specific TVK keyword OR the keyword "Vijay" with political context.
   const isRelevant = hasSpecificTVKKeyword || (hasVijay && hasPoliticalContext);
