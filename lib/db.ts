@@ -621,6 +621,22 @@ export async function addRssSource(source: { name: string; url: string; language
   }
 }
 
+export async function syncRssSources(sources: { name: string; url: string; language?: string; category?: string }[]): Promise<void> {
+  const db = getTurso()
+  const urls = sources.map(s => s.url)
+
+  // Deactivate sources not in the list
+  await db.execute({
+    sql: `UPDATE rss_sources SET is_active = 0 WHERE url NOT IN (${urls.map(() => '?').join(',')})`,
+    args: urls
+  })
+
+  // Add/update sources in the list
+  for (const source of sources) {
+    await addRssSource(source)
+  }
+}
+
 export async function updateRssSourceFetched(url: string): Promise<void> {
   const db = getTurso()
   await db.execute({

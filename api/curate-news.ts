@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { initDB, insertNews, newsUrlExists, addRssSource, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
+import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
 
 // Default RSS sources - Tamil news channels covering politics/cinema
 // Using correct commonfeeds pattern for News18 Tamil which has <media:content> images
@@ -292,11 +292,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await initDB()
 
-    // Always sync default RSS sources (in case they changed)
-    console.log('Syncing default RSS sources...')
-    for (const source of DEFAULT_RSS_SOURCES) {
-      await addRssSource(source)
-    }
+    // Sync RSS sources - deactivate old ones, add new ones
+    console.log('Syncing RSS sources (deactivating old, adding new)...')
+    await syncRssSources(DEFAULT_RSS_SOURCES)
 
     // Get active RSS sources
     const rssSources = await getRssSources(true)
