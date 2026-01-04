@@ -76,13 +76,19 @@ function base64urlDecode(str: string): Uint8Array {
   // Add padding if needed
   while (base64.length % 4) base64 += '='
 
-  // Decode base64 to binary string
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
+  // Use Buffer for Node.js environment (Vercel serverless)
+  try {
+    const buffer = Buffer.from(base64, 'base64')
+    return new Uint8Array(buffer)
+  } catch (e) {
+    // Fallback for browser environment
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i)
+    }
+    return bytes
   }
-  return bytes
 }
 
 // Extract URL from protobuf-like structure
@@ -143,38 +149,68 @@ async function resolveGoogleNewsUrl(url: string): Promise<string> {
     // First try to decode the URL directly (faster)
     const decodedUrl = decodeGoogleNewsUrl(url)
     if (decodedUrl) {
+      console.log(`Decoded URL: ${decodedUrl.substring(0, 70)}...`)
       return decodedUrl
     }
 
-    // Fallback: Follow the redirect to get actual URL
-    const response = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    })
+    console.log(`Decoder failed, trying redirect for: ${url.substring(0, 50)}...`)
 
-    // Check final URL after redirects
-    if (response.url && !response.url.includes('news.google.com')) {
-      console.log(`Resolved via redirect: ${response.url.substring(0, 60)}...`)
-      return response.url
+    // Try with manual redirect following to handle consent pages
+    let currentUrl = url
+    for (let i = 0; i < 5; i++) { // Max 5 redirects
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual', // Handle redirects manually
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9,ta;q=0.8',
+          'Cache-Control': 'no-cache',
+        },
+      })
+
+      // Check for redirect
+      const location = response.headers.get('location')
+      if (location) {
+        // Make absolute URL if relative
+        const nextUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href
+        if (!nextUrl.includes('news.google.com') && !nextUrl.includes('consent.google.com')) {
+          console.log(`Redirect resolved: ${nextUrl.substring(0, 70)}...`)
+          return nextUrl
+        }
+        currentUrl = nextUrl
+        continue
+      }
+
+      // No redirect, check response body for JS redirect
+      const html = await response.text()
+
+      // Look for meta refresh redirect
+      const metaRefresh = html.match(/<meta[^>]+http-equiv=["']refresh["'][^>]+content=["'][^"']*url=([^"'>\s]+)/i)
+      if (metaRefresh?.[1]) {
+        const refreshUrl = metaRefresh[1].replace(/&amp;/g, '&')
+        if (!refreshUrl.includes('news.google.com')) {
+          console.log(`Meta refresh resolved: ${refreshUrl.substring(0, 70)}...`)
+          return refreshUrl
+        }
+      }
+
+      // Look for article URL in data attributes or JSON
+      const articleMatch = html.match(/data-n-au="([^"]+)"/i) || // Google News article URL attribute
+                           html.match(/"url"\s*:\s*"(https?:\/\/(?!news\.google|google\.com)[^"]+)"/i) ||
+                           html.match(/window\.location\.replace\s*\(\s*["']([^"']+)["']\s*\)/i) ||
+                           html.match(/href="(https?:\/\/(?!news\.google|google\.com|consent\.google)[^"]+\.(com|in|net|org)\/[^"]+)"/i)
+
+      if (articleMatch?.[1]) {
+        const extractedUrl = articleMatch[1].replace(/\\u002F/g, '/').replace(/&amp;/g, '&')
+        console.log(`Extracted from body: ${extractedUrl.substring(0, 70)}...`)
+        return extractedUrl
+      }
+
+      break // No more redirects to follow
     }
 
-    // Try to extract from response body
-    const html = await response.text()
-
-    // Look for data-url or href attributes with actual article URLs
-    const dataUrlMatch = html.match(/data-url="(https?:\/\/(?!news\.google)[^"]+)"/i) ||
-                         html.match(/href="(https?:\/\/(?!news\.google|google\.com)[^"]+)"/i) ||
-                         html.match(/"(https?:\/\/(?!news\.google|google\.com|gstatic)[^"]+\.(?:com|in|net|org)\/[^"]+)"/i)
-
-    if (dataUrlMatch?.[1]) {
-      console.log(`Extracted from HTML: ${dataUrlMatch[1].substring(0, 60)}...`)
-      return dataUrlMatch[1]
-    }
-
+    console.log(`Could not resolve: ${url.substring(0, 50)}...`)
     return url
   } catch (error) {
     console.error('Failed to resolve Google News URL:', error)
