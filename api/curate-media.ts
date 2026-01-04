@@ -69,33 +69,110 @@ const TVK_FALLBACK_IMAGES = [
   'https://rajkaran.in/wp-content/uploads/2025/02/vijay.jpg', // Vijay TVK (repeat)
 ]
 
+// Decode base64url (URL-safe base64) to bytes
+function base64urlDecode(str: string): Uint8Array {
+  // Convert base64url to standard base64
+  let base64 = str.replace(/-/g, '+').replace(/_/g, '/')
+  // Add padding if needed
+  while (base64.length % 4) base64 += '='
+
+  // Decode base64 to binary string
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return bytes
+}
+
+// Extract URL from protobuf-like structure
+function extractUrlFromBytes(bytes: Uint8Array): string | null {
+  // Look for "http" in the decoded bytes and extract the URL
+  const decoder = new TextDecoder('utf-8', { fatal: false })
+  const text = decoder.decode(bytes)
+
+  // Find http:// or https:// URLs in the decoded content
+  const urlMatch = text.match(/https?:\/\/[^\x00-\x1f\x7f-\x9f"<>\s]+/g)
+  if (urlMatch && urlMatch.length > 0) {
+    // Return the first non-Google URL found
+    for (const url of urlMatch) {
+      if (!url.includes('google.com') && !url.includes('gstatic.com')) {
+        // Clean up the URL (remove any trailing garbage)
+        const cleanUrl = url.replace(/[\x00-\x1f\x7f-\x9f]+.*$/, '')
+        return cleanUrl
+      }
+    }
+  }
+  return null
+}
+
+// Decode Google News article URL to get actual article URL
+function decodeGoogleNewsUrl(googleUrl: string): string | null {
+  try {
+    // Extract the encoded part from URLs like:
+    // https://news.google.com/rss/articles/CBMi...
+    // https://news.google.com/stories/...
+
+    const match = googleUrl.match(/\/articles\/([A-Za-z0-9_-]+)/) ||
+                  googleUrl.match(/\/stories\/([A-Za-z0-9_-]+)/)
+
+    if (!match) return null
+
+    const encoded = match[1]
+    const bytes = base64urlDecode(encoded)
+    const articleUrl = extractUrlFromBytes(bytes)
+
+    if (articleUrl) {
+      console.log(`Decoded Google News: ${articleUrl.substring(0, 60)}...`)
+      return articleUrl
+    }
+
+    return null
+  } catch (error) {
+    console.error('Failed to decode Google News URL:', error)
+    return null
+  }
+}
+
 // Follow Google News redirect to get actual article URL
 async function resolveGoogleNewsUrl(url: string): Promise<string> {
   try {
     // If not a Google News URL, return as-is
     if (!url.includes('news.google.com')) return url
 
-    // Follow the redirect to get actual URL
+    // First try to decode the URL directly (faster)
+    const decodedUrl = decodeGoogleNewsUrl(url)
+    if (decodedUrl) {
+      return decodedUrl
+    }
+
+    // Fallback: Follow the redirect to get actual URL
     const response = await fetch(url, {
       method: 'GET',
-      redirect: 'manual', // Don't auto-follow, we want the redirect URL
+      redirect: 'follow',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
       },
     })
 
-    // Check for redirect
-    const location = response.headers.get('location')
-    if (location && location.startsWith('http')) {
-      console.log(`Resolved: ${url.substring(0, 40)}... -> ${location.substring(0, 50)}...`)
-      return location
+    // Check final URL after redirects
+    if (response.url && !response.url.includes('news.google.com')) {
+      console.log(`Resolved via redirect: ${response.url.substring(0, 60)}...`)
+      return response.url
     }
 
-    // Try to extract from response body (some Google News pages have JS redirects)
+    // Try to extract from response body
     const html = await response.text()
-    const urlMatch = html.match(/href="(https?:\/\/(?!news\.google)[^"]+)"/i)
-    if (urlMatch?.[1]) {
-      return urlMatch[1]
+
+    // Look for data-url or href attributes with actual article URLs
+    const dataUrlMatch = html.match(/data-url="(https?:\/\/(?!news\.google)[^"]+)"/i) ||
+                         html.match(/href="(https?:\/\/(?!news\.google|google\.com)[^"]+)"/i) ||
+                         html.match(/"(https?:\/\/(?!news\.google|google\.com|gstatic)[^"]+\.(?:com|in|net|org)\/[^"]+)"/i)
+
+    if (dataUrlMatch?.[1]) {
+      console.log(`Extracted from HTML: ${dataUrlMatch[1].substring(0, 60)}...`)
+      return dataUrlMatch[1]
     }
 
     return url
@@ -269,27 +346,37 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
-        // Get the link from RSS - use Google link for click-through (it redirects properly)
-        const link = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
-        if (!link) continue
+        // Get the link from RSS
+        const rawLink = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
+        if (!rawLink) continue
 
         // Validate title content
         if (!isValidContent(title)) continue
 
+        // Resolve Google News URLs to get actual article URL
+        let articleUrl = rawLink
+        let displayLink = rawLink // Keep original for click-through (better tracking)
+
+        if (rawLink.includes('news.google.com')) {
+          const resolved = await resolveGoogleNewsUrl(rawLink)
+          if (resolved && resolved !== rawLink) {
+            articleUrl = resolved
+            console.log(`Google News resolved: ${rawLink.substring(0, 40)}... -> ${articleUrl.substring(0, 50)}...`)
+          }
+        }
+
         // Check URL for negative keywords
-        const urlLower = link.toLowerCase()
+        const urlLower = articleUrl.toLowerCase()
         const hasNegativeUrl = NEGATIVE_KEYWORDS.some(kw => urlLower.includes(kw.replace(' ', '')))
         if (hasNegativeUrl) {
-          console.log(`Skipped (negative URL): ${link.substring(0, 50)}...`)
+          console.log(`Skipped (negative URL): ${articleUrl.substring(0, 50)}...`)
           continue
         }
 
-        // For Google News URLs, we can't reliably fetch OG metadata
-        // Use TVK fallback images and title as description
+        // Fetch OG metadata from the actual article URL (not Google News URL)
         let ogData: { image?: string; description?: string } = {}
-        if (!link.includes('news.google.com')) {
-          // Only try to fetch OG metadata for non-Google URLs
-          ogData = await fetchOGMetadata(link)
+        if (!articleUrl.includes('news.google.com')) {
+          ogData = await fetchOGMetadata(articleUrl)
         }
 
         // Also check OG description for negative content
@@ -308,7 +395,7 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         }
 
         // Check for duplicates by URL before adding
-        const isDuplicate = news.some(n => n.url === link)
+        const isDuplicate = news.some(n => n.url === rawLink || n.url === articleUrl)
         if (isDuplicate) {
           console.log(`Skipped (duplicate): ${title.substring(0, 40)}...`)
           continue
@@ -325,9 +412,10 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const description = ogData.description || cleanTitle
 
         // Add news item with image (OG or fallback)
+        // Use rawLink for click-through (Google News or direct) - it redirects properly
         news.push({
           type: 'news',
-          url: link,
+          url: rawLink,
           thumbnail_url: imageUrl,
           title: cleanTitle,
           description: description,
