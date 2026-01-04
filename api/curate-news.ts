@@ -30,14 +30,17 @@ const CONDITIONAL_KEYWORDS = [
   'vijay', 'விஜய்', 'thalapathy', 'தளபதி', 'actor vijay'
 ]
 
-// Political context words - required with conditional keywords
+// Political context words/stems - required with conditional keywords
+// Tamil words use stems to match with suffixes (e.g., வாக்கு matches வாக்காக)
 const POLITICAL_CONTEXT = [
   // English
-  'party', 'politics', 'political', 'rally', 'campaign', 'election', 'vote',
+  'party', 'politic', 'rally', 'campaign', 'election', 'vote', 'votes',
   'leader', 'chief', 'member', 'join', 'speech', 'announce', 'launch',
-  // Tamil
-  'கட்சி', 'அரசியல்', 'பேரணி', 'தேர்தல்', 'வாக்கு', 'பிரச்சாரம்',
-  'தலைவர்', 'உறுப்பினர்', 'இணைவு', 'உரை', 'அறிவிப்பு', 'தொடக்கம்'
+  'tvk', 'tamilaga', 'vettri',
+  // Tamil stems (will match with suffixes)
+  'கட்சி', 'அரசிய', 'பேரணி', 'தேர்தல', 'வாக்', 'பிரச்சார',
+  'தலைவ', 'உறுப்பின', 'இணை', 'உரை', 'அறிவிப்', 'தொடக்க',
+  'விமர்சி', 'ஆதரவ', 'எதிர்ப்', 'கூட்ட', 'பொது', 'அரங்'
 ]
 
 // Negative sentiment words to filter out
