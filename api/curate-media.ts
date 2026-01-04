@@ -6,7 +6,8 @@ import {
   insertNews,
   newsUrlExists,
   cleanupOldContent,
-  logCurationRun
+  logCurationRun,
+  getTurso
 } from '../lib/db'
 
 /**
@@ -393,6 +394,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     console.log('Starting media curation:', runId)
     await initDB()
+
+    // Clean up news with Google logos or bad descriptions
+    const db = getTurso()
+    const badDataCleanup = await db.execute({
+      sql: `DELETE FROM news WHERE
+            image_url LIKE '%lh3.googleusercontent.com%' OR
+            image_url LIKE '%gstatic.com/gnews%' OR
+            description LIKE '%Comprehensive up-to-date news coverage%' OR
+            description LIKE '%<a href=%' OR
+            description LIKE '%&lt;a href=%'`,
+      args: []
+    })
+    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad Google data`)
 
     // Cleanup old media
     const cleaned = await cleanupOldContent()
