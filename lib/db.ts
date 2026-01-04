@@ -44,6 +44,40 @@ export function closeDB(): void {
 export async function initDB(): Promise<void> {
   const db = getTurso()
 
+  // RSS sources table (curated list of Tamil news RSS feeds)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS rss_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      url TEXT UNIQUE NOT NULL,
+      language TEXT DEFAULT 'ta',
+      category TEXT DEFAULT 'general',
+      is_active INTEGER DEFAULT 1,
+      last_fetched_at TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `)
+
+  // News table (curated news articles)
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS news (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      url TEXT UNIQUE NOT NULL,
+      image_url TEXT,
+      source_name TEXT NOT NULL,
+      source_url TEXT,
+      published_at TEXT,
+      keywords_matched TEXT,
+      sentiment_score REAL DEFAULT 0,
+      relevance_score INTEGER DEFAULT 50,
+      status TEXT DEFAULT 'approved',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )
+  `)
+
   // Hero images table (4K/HD for carousel)
   await db.execute(`
     CREATE TABLE IF NOT EXISTS hero_images (
@@ -139,6 +173,8 @@ export async function initDB(): Promise<void> {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_hero_status ON hero_images(status, quality_score DESC)`)
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_media_status ON media(status, relevance_score DESC)`)
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_tweets_status ON tweets(status, published_at DESC)`)
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_news_status ON news(status, published_at DESC)`)
+  await db.execute(`CREATE INDEX IF NOT EXISTS idx_rss_active ON rss_sources(is_active)`)
 
   console.log('Database schema initialized')
 }
@@ -519,6 +555,7 @@ export async function getStats(): Promise<{
   hero_images: number
   media: number
   tweets: number
+  news: number
   last_curation: string | null
 }> {
   const db = getTurso()
@@ -526,12 +563,165 @@ export async function getStats(): Promise<{
   const heroResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM hero_images WHERE status IN ('approved', 'featured')`, args: [] })
   const mediaResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM media WHERE status IN ('approved', 'featured')`, args: [] })
   const tweetsResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM tweets WHERE status IN ('approved', 'featured')`, args: [] })
+  const newsResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM news WHERE status IN ('approved', 'featured')`, args: [] })
   const lastCuration = await getLastCurationTime()
 
   return {
     hero_images: heroResult.rows[0]?.count as number || 0,
     media: mediaResult.rows[0]?.count as number || 0,
     tweets: tweetsResult.rows[0]?.count as number || 0,
+    news: newsResult.rows[0]?.count as number || 0,
     last_curation: lastCuration
+  }
+}
+
+// ============== RSS SOURCES ==============
+
+export interface RssSource {
+  id: number
+  name: string
+  url: string
+  language: string
+  category: string
+  is_active: boolean
+  last_fetched_at?: string
+  created_at?: string
+}
+
+export async function getRssSources(activeOnly: boolean = true): Promise<RssSource[]> {
+  const db = getTurso()
+  const sql = activeOnly
+    ? 'SELECT * FROM rss_sources WHERE is_active = 1 ORDER BY name'
+    : 'SELECT * FROM rss_sources ORDER BY name'
+  const result = await db.execute({ sql, args: [] })
+  return result.rows.map(row => ({
+    id: row.id as number,
+    name: row.name as string,
+    url: row.url as string,
+    language: row.language as string,
+    category: row.category as string,
+    is_active: row.is_active === 1,
+    last_fetched_at: row.last_fetched_at as string | undefined,
+    created_at: row.created_at as string | undefined,
+  }))
+}
+
+export async function addRssSource(source: { name: string; url: string; language?: string; category?: string }): Promise<boolean> {
+  const db = getTurso()
+  try {
+    await db.execute({
+      sql: `INSERT INTO rss_sources (name, url, language, category) VALUES (?, ?, ?, ?)
+            ON CONFLICT(url) DO UPDATE SET name = excluded.name, is_active = 1`,
+      args: [source.name, source.url, source.language || 'ta', source.category || 'general']
+    })
+    return true
+  } catch (err) {
+    console.error('Error adding RSS source:', err)
+    return false
+  }
+}
+
+export async function updateRssSourceFetched(url: string): Promise<void> {
+  const db = getTurso()
+  await db.execute({
+    sql: `UPDATE rss_sources SET last_fetched_at = datetime('now') WHERE url = ?`,
+    args: [url]
+  })
+}
+
+// ============== NEWS ==============
+
+export interface NewsItem {
+  id: string
+  title: string
+  description?: string
+  url: string
+  image_url?: string
+  source_name: string
+  source_url?: string
+  published_at?: string
+  keywords_matched?: string
+  sentiment_score: number
+  relevance_score: number
+  status: string
+  created_at?: string
+  updated_at?: string
+}
+
+export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at'>): Promise<boolean> {
+  const db = getTurso()
+  try {
+    await db.execute({
+      sql: `INSERT INTO news (id, title, description, url, image_url, source_name, source_url, published_at, keywords_matched, sentiment_score, relevance_score, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(url) DO UPDATE SET
+              title = excluded.title,
+              image_url = COALESCE(excluded.image_url, news.image_url),
+              sentiment_score = excluded.sentiment_score,
+              relevance_score = excluded.relevance_score,
+              updated_at = datetime('now')`,
+      args: [
+        news.id, news.title, news.description || null, news.url, news.image_url || null,
+        news.source_name, news.source_url || null, news.published_at || null,
+        news.keywords_matched || null, news.sentiment_score, news.relevance_score, news.status
+      ]
+    })
+    return true
+  } catch (err) {
+    console.error('Error inserting news:', err)
+    return false
+  }
+}
+
+export async function getNews(options: {
+  limit?: number
+  offset?: number
+} = {}): Promise<NewsItem[]> {
+  const db = getTurso()
+  const { limit = 20, offset = 0 } = options
+
+  const result = await db.execute({
+    sql: `SELECT * FROM news WHERE status IN ('approved', 'featured') AND image_url IS NOT NULL
+          ORDER BY published_at DESC, relevance_score DESC LIMIT ? OFFSET ?`,
+    args: [limit, offset]
+  })
+  return result.rows.map(row => rowToNewsItem(row))
+}
+
+export async function newsUrlExists(url: string): Promise<boolean> {
+  const db = getTurso()
+  const result = await db.execute({ sql: 'SELECT 1 FROM news WHERE url = ?', args: [url] })
+  return result.rows.length > 0
+}
+
+export async function cleanupOldNews(daysOld: number = 7): Promise<number> {
+  const db = getTurso()
+  const cutoffDate = new Date()
+  cutoffDate.setDate(cutoffDate.getDate() - daysOld)
+  const cutoff = cutoffDate.toISOString()
+
+  const result = await db.execute({
+    sql: `DELETE FROM news WHERE published_at < ? AND status != 'featured'`,
+    args: [cutoff]
+  })
+  return result.rowsAffected
+}
+
+function rowToNewsItem(row: any): NewsItem {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    description: row.description as string | undefined,
+    url: row.url as string,
+    image_url: row.image_url as string | undefined,
+    source_name: row.source_name as string,
+    source_url: row.source_url as string | undefined,
+    published_at: row.published_at as string | undefined,
+    keywords_matched: row.keywords_matched as string | undefined,
+    sentiment_score: row.sentiment_score as number,
+    relevance_score: row.relevance_score as number,
+    status: row.status as string,
+    created_at: row.created_at as string | undefined,
+    updated_at: row.updated_at as string | undefined,
   }
 }

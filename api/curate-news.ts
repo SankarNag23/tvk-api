@@ -1,0 +1,388 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { initDB, insertNews, newsUrlExists, addRssSource, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
+
+// Default RSS sources - Tamil news channels covering politics/cinema
+const DEFAULT_RSS_SOURCES = [
+  // Tamil News - Politics
+  { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/rss/tamilnadu.xml', category: 'politics' },
+  { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/rss/politics.xml', category: 'politics' },
+  { name: 'Zee News Tamil', url: 'https://zeenews.india.com/tamil/tamilnadu/rss.xml', category: 'politics' },
+  { name: 'India Today Tamil', url: 'https://www.indiatoday.in/rss/home/tamilnadu', category: 'politics' },
+
+  // Tamil Cinema News (Vijay related)
+  { name: 'News18 Tamil - Cinema', url: 'https://tamil.news18.com/rss/movies.xml', category: 'cinema' },
+  { name: 'Behindwoods', url: 'https://www.behindwoods.com/tamil-movies/rss/news-rss-feed.xml', category: 'cinema' },
+
+  // Google News RSS for specific searches
+  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=TVK+Vijay+Tamil&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Tamilaga Vettri Kazhagam', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+]
+
+// Keywords to match (English and Tamil)
+const TVK_KEYWORDS = [
+  // English keywords
+  'tvk', 'tamilaga vettri kazhagam', 'vijay', 'actor vijay', 'thalapathy',
+  'sengottaiyan', 'bussy anand', 'bussy ananth', 'tvk it wing',
+  // Tamil keywords
+  'விஜய்', 'தளபதி', 'தமிழக வெற்றிக் கழகம்', 'செங்கொட்டையன்',
+  'பஸ்ஸி ஆனந்த்', 'டிவிகே', 'வெற்றிக் கழகம்'
+]
+
+// Negative sentiment words to filter out
+const NEGATIVE_KEYWORDS = [
+  // English
+  'arrest', 'death', 'dead', 'kill', 'murder', 'accident', 'tragedy', 'scandal',
+  'corruption', 'scam', 'fraud', 'attack', 'violence', 'protest against', 'failure',
+  'defeated', 'loss', 'crisis', 'controversy', 'allegation', 'accused', 'criminal',
+  // Tamil negative words
+  'கைது', 'மரணம்', 'இறப்பு', 'கொலை', 'விபத்து', 'ஊழல்', 'மோசடி', 'தாக்குதல்',
+  'வன்முறை', 'தோல்வி', 'சர்ச்சை', 'குற்றச்சாட்டு'
+]
+
+// Positive sentiment indicators
+const POSITIVE_KEYWORDS = [
+  // English
+  'launch', 'announce', 'success', 'win', 'victory', 'support', 'rally', 'meet',
+  'celebration', 'inaugurat', 'welcome', 'join', 'growth', 'progress', 'achieve',
+  'campaign', 'speech', 'address', 'promise', 'vision', 'plan', 'initiative',
+  // Tamil positive words
+  'வெற்றி', 'தொடக்கம்', 'அறிவிப்பு', 'ஆதரவு', 'பேரணி', 'கூட்டம்', 'விழா',
+  'வரவேற்பு', 'இணைவு', 'வளர்ச்சி', 'முன்னேற்றம்', 'சாதனை', 'பிரச்சாரம்',
+  'உரை', 'திட்டம்', 'முயற்சி'
+]
+
+interface RssItem {
+  title: string
+  link: string
+  description?: string
+  pubDate?: string
+  imageUrl?: string
+  source: string
+}
+
+// Extract image URL from RSS item using multiple methods
+function extractImageUrl(item: any, content: string): string | null {
+  // Method 1: media:content
+  if (item['media:content']?.$?.url) {
+    return item['media:content'].$.url
+  }
+
+  // Method 2: media:thumbnail
+  if (item['media:thumbnail']?.$?.url) {
+    return item['media:thumbnail'].$.url
+  }
+
+  // Method 3: enclosure with image type
+  if (item.enclosure?.$?.url && item.enclosure.$.type?.includes('image')) {
+    return item.enclosure.$.url
+  }
+
+  // Method 4: image tag
+  if (item.image?.url) {
+    return item.image.url
+  }
+
+  // Method 5: Extract from description HTML
+  const descMatch = content.match(/<img[^>]+src=["']([^"']+)["']/i)
+  if (descMatch) {
+    return descMatch[1]
+  }
+
+  // Method 6: og:image or similar in content
+  const ogMatch = content.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)/i)
+  if (ogMatch) {
+    return ogMatch[0]
+  }
+
+  return null
+}
+
+// Check if content matches TVK keywords
+function matchesKeywords(text: string): string[] {
+  const lowerText = text.toLowerCase()
+  const matched: string[] = []
+
+  for (const keyword of TVK_KEYWORDS) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      matched.push(keyword)
+    }
+  }
+
+  return matched
+}
+
+// Calculate sentiment score (-1 to 1)
+function calculateSentiment(text: string): number {
+  const lowerText = text.toLowerCase()
+  let score = 0
+
+  // Check negative keywords
+  for (const keyword of NEGATIVE_KEYWORDS) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      score -= 0.3
+    }
+  }
+
+  // Check positive keywords
+  for (const keyword of POSITIVE_KEYWORDS) {
+    if (lowerText.includes(keyword.toLowerCase())) {
+      score += 0.2
+    }
+  }
+
+  // Clamp between -1 and 1
+  return Math.max(-1, Math.min(1, score))
+}
+
+// Parse RSS feed
+async function parseRssFeed(url: string, sourceName: string): Promise<RssItem[]> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; TVK-Bot/1.0)',
+        'Accept': 'application/rss+xml, application/xml, text/xml'
+      },
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (!response.ok) {
+      console.log(`RSS fetch failed for ${sourceName}: ${response.status}`)
+      return []
+    }
+
+    const xmlText = await response.text()
+    const items: RssItem[] = []
+
+    // Simple XML parsing for RSS items
+    const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/gi) || []
+
+    for (const itemXml of itemMatches.slice(0, 20)) { // Limit to 20 items per feed
+      const title = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim()
+      const link = itemXml.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim()
+      const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim()
+      const pubDate = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim()
+
+      if (!title || !link) continue
+
+      // Extract image from various locations
+      let imageUrl: string | null = null
+
+      // media:content
+      const mediaContent = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i)
+      if (mediaContent) imageUrl = mediaContent[1]
+
+      // media:thumbnail
+      if (!imageUrl) {
+        const mediaThumbnail = itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
+        if (mediaThumbnail) imageUrl = mediaThumbnail[1]
+      }
+
+      // enclosure
+      if (!imageUrl) {
+        const enclosure = itemXml.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image/i)
+        if (enclosure) imageUrl = enclosure[1]
+      }
+
+      // img src in description
+      if (!imageUrl && description) {
+        const imgSrc = description.match(/<img[^>]+src=["']([^"']+)["']/i)
+        if (imgSrc) imageUrl = imgSrc[1]
+      }
+
+      // Direct image URL pattern
+      if (!imageUrl) {
+        const directImg = itemXml.match(/https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|webp)/i)
+        if (directImg) imageUrl = directImg[0]
+      }
+
+      items.push({
+        title: title.replace(/<[^>]+>/g, '').trim(),
+        link,
+        description: description?.replace(/<[^>]+>/g, '').substring(0, 500),
+        pubDate,
+        imageUrl: imageUrl || undefined,
+        source: sourceName
+      })
+    }
+
+    return items
+  } catch (error) {
+    console.error(`Error parsing RSS ${sourceName}:`, error)
+    return []
+  }
+}
+
+// Generate unique ID
+function generateId(): string {
+  return `news_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
+  // Only allow POST with API key
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // Verify API key
+  const authHeader = req.headers.authorization
+  const apiKey = process.env.CURATION_API_KEY
+
+  if (!apiKey || authHeader !== `Bearer ${apiKey}`) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+
+  const runId = `news_${Date.now()}`
+  const startedAt = new Date().toISOString()
+
+  try {
+    await initDB()
+
+    // Initialize default RSS sources if needed
+    const existingSources = await getRssSources(false)
+    if (existingSources.length === 0) {
+      console.log('Adding default RSS sources...')
+      for (const source of DEFAULT_RSS_SOURCES) {
+        await addRssSource(source)
+      }
+    }
+
+    // Get active RSS sources
+    const rssSources = await getRssSources(true)
+    console.log(`Fetching from ${rssSources.length} RSS sources...`)
+
+    let totalFetched = 0
+    let totalAdded = 0
+    let totalSkipped = 0
+    const errors: string[] = []
+
+    // Process each RSS source
+    for (const source of rssSources) {
+      try {
+        console.log(`Fetching: ${source.name}`)
+        const items = await parseRssFeed(source.url, source.name)
+        totalFetched += items.length
+
+        await updateRssSourceFetched(source.url)
+
+        for (const item of items) {
+          // Skip if no image
+          if (!item.imageUrl) {
+            totalSkipped++
+            continue
+          }
+
+          // Check if already exists
+          if (await newsUrlExists(item.link)) {
+            totalSkipped++
+            continue
+          }
+
+          // Check keywords
+          const fullText = `${item.title} ${item.description || ''}`
+          const matchedKeywords = matchesKeywords(fullText)
+
+          if (matchedKeywords.length === 0) {
+            totalSkipped++
+            continue
+          }
+
+          // Calculate sentiment
+          const sentimentScore = calculateSentiment(fullText)
+
+          // Skip negative news (sentiment < -0.2)
+          if (sentimentScore < -0.2) {
+            console.log(`Skipping negative news: ${item.title.substring(0, 50)}...`)
+            totalSkipped++
+            continue
+          }
+
+          // Calculate relevance score (50-100)
+          const relevanceScore = Math.min(100, 50 + (matchedKeywords.length * 10) + (sentimentScore * 20))
+
+          // Insert into database
+          const success = await insertNews({
+            id: generateId(),
+            title: item.title,
+            description: item.description,
+            url: item.link,
+            image_url: item.imageUrl,
+            source_name: source.name,
+            source_url: source.url,
+            published_at: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
+            keywords_matched: matchedKeywords.join(','),
+            sentiment_score: sentimentScore,
+            relevance_score: Math.round(relevanceScore),
+            status: 'approved'
+          })
+
+          if (success) {
+            totalAdded++
+            console.log(`Added: ${item.title.substring(0, 50)}... [${matchedKeywords.join(', ')}]`)
+          }
+        }
+      } catch (sourceError: any) {
+        errors.push(`${source.name}: ${sourceError.message}`)
+        console.error(`Error with ${source.name}:`, sourceError)
+      }
+    }
+
+    // Cleanup old news (older than 7 days)
+    const cleanedUp = await cleanupOldNews(7)
+    console.log(`Cleaned up ${cleanedUp} old news items`)
+
+    // Log curation run
+    await logCurationRun({
+      run_id: runId,
+      source: 'news',
+      items_fetched: totalFetched,
+      items_added: totalAdded,
+      items_updated: 0,
+      items_skipped: totalSkipped,
+      errors: errors.length > 0 ? errors.join('; ') : undefined,
+      started_at: startedAt,
+      completed_at: new Date().toISOString()
+    })
+
+    return res.status(200).json({
+      success: true,
+      run_id: runId,
+      stats: {
+        sources_processed: rssSources.length,
+        items_fetched: totalFetched,
+        items_added: totalAdded,
+        items_skipped: totalSkipped,
+        cleaned_up: cleanedUp
+      },
+      errors: errors.length > 0 ? errors : undefined
+    })
+
+  } catch (error: any) {
+    console.error('Curation error:', error)
+
+    await logCurationRun({
+      run_id: runId,
+      source: 'news',
+      items_fetched: 0,
+      items_added: 0,
+      items_updated: 0,
+      items_skipped: 0,
+      errors: error.message,
+      started_at: startedAt,
+      completed_at: new Date().toISOString()
+    })
+
+    return res.status(500).json({
+      error: 'Curation failed',
+      message: error.message
+    })
+  }
+}

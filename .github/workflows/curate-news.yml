@@ -1,0 +1,37 @@
+name: News Curation
+
+on:
+  schedule:
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger News Curation
+        run: |
+          echo "Starting news curation at $(date)"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://tvk-api.vercel.app/api/curate-news" \
+            -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response code: $http_code"
+          echo "Response body: $body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Curation failed with status $http_code"
+            exit 1
+          fi
+
+          echo "News curation completed successfully!"
+          echo "$body" | jq '.' 2>/dev/null || echo "$body"
