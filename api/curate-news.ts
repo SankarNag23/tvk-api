@@ -382,18 +382,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
 
-          // Try to fetch og:image if no image in RSS
+          // Check for image
           let imageUrl = item.imageUrl
-          if (!imageUrl) {
-            console.log(`Fetching og:image for: ${item.title.substring(0, 40)}...`)
-            imageUrl = await fetchOgImage(item.link) || undefined
-          }
 
-          // Skip if still no image
+          // For Google News (category: tvk), we need to fetch og:image but limit to avoid timeout
+          // For News18 (has embedded images), only fetch if missing
           if (!imageUrl) {
-            skipReasons.image++
-            totalSkipped++
-            continue
+            if (source.category === 'tvk') {
+              // Google News - skip og:image to avoid timeout
+              // These items will be excluded (no image)
+              skipReasons.image++
+              totalSkipped++
+              continue
+            } else {
+              // News18 - try og:image as fallback (should rarely need this)
+              imageUrl = await fetchOgImage(item.link) || undefined
+              if (!imageUrl) {
+                skipReasons.image++
+                totalSkipped++
+                continue
+              }
+            }
           }
 
           // Calculate sentiment
