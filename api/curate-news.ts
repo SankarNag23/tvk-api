@@ -308,9 +308,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         await updateRssSourceFetched(source.url)
 
+        console.log(`Processing ${items.length} items from ${source.name}`)
+        let keywordSkips = 0, imageSkips = 0, sentimentSkips = 0, duplicateSkips = 0
+
         for (const item of items) {
           // Check if already exists
           if (await newsUrlExists(item.link)) {
+            duplicateSkips++
             totalSkipped++
             continue
           }
@@ -330,6 +334,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // For general news sources, require keyword matching
             matchedKeywords = matchesKeywords(fullText)
             if (matchedKeywords.length === 0) {
+              keywordSkips++
               totalSkipped++
               continue
             }
@@ -344,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Skip if still no image
           if (!imageUrl) {
-            console.log(`No image found: ${item.title.substring(0, 40)}...`)
+            imageSkips++
             totalSkipped++
             continue
           }
@@ -354,10 +359,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Skip negative news (sentiment < -0.2)
           if (sentimentScore < -0.2) {
-            console.log(`Skipping negative: ${item.title.substring(0, 40)}...`)
+            sentimentSkips++
             totalSkipped++
             continue
           }
+
+          console.log(`Attempting insert: ${item.title.substring(0, 50)}... (img: ${!!imageUrl})`)
 
           // Calculate relevance score (50-100)
           const relevanceScore = Math.min(100, 50 + (matchedKeywords.length * 10) + (sentimentScore * 20))
@@ -387,8 +394,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (success) {
             totalAdded++
             console.log(`Added: ${item.title.substring(0, 50)}... [${matchedKeywords.join(', ')}]`)
+          } else {
+            console.log(`Failed to insert: ${item.title.substring(0, 50)}...`)
           }
         }
+
+        console.log(`${source.name} summary: dup=${duplicateSkips}, kw=${keywordSkips}, img=${imageSkips}, sent=${sentimentSkips}`)
       } catch (sourceError: any) {
         errors.push(`${source.name}: ${sourceError.message}`)
         console.error(`Error with ${source.name}:`, sourceError)
