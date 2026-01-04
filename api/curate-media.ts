@@ -48,17 +48,17 @@ const NEGATIVE_KEYWORDS = [
   'மோசடி', 'ஊழல்', 'கைது', 'புகார்', 'தோல்வி',
 ]
 
-// Tamil/India news RSS feeds with images (media:content, media:thumbnail)
-// Searching for: Vijay, TVK, Tamilaga Vettri Kazhagam, Sengottaiyan, Bussy Anand
+// Tamil news RSS feeds with REAL images (media:content)
+// Covers: TVK, Vijay, Tamil Nadu politics, Sengottaiyan, Bussy Anand
 const RSS_FEEDS = [
-  // English news with working RSS + images
-  { name: 'Indian Express Chennai', url: 'https://indianexpress.com/section/cities/chennai/feed/' },
-  { name: 'Indian Express India', url: 'https://indianexpress.com/section/india/feed/' },
-  { name: 'News18 Politics', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
-  { name: 'News18 India', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/india.xml' },
+  // News18 Tamil - WORKING with images and TVK content
+  { name: 'News18 Tamil Nadu', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml' },
+  { name: 'News18 Tamil Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml' },
+  { name: 'News18 Tamil Cinema', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/cinema.xml' },
 
-  // Tamil Nadu specific
-  { name: 'News18 Tamil Nadu', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/tamil-nadu.xml' },
+  // English news with RSS + images
+  { name: 'Indian Express Chennai', url: 'https://indianexpress.com/section/cities/chennai/feed/' },
+  { name: 'News18 Politics EN', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
 ]
 
 // TVK-themed fallback images for news without OG images
