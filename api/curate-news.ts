@@ -57,7 +57,7 @@ interface RssItem {
   source: string
 }
 
-// Fetch og:image from article page
+// Fetch og:image from article page (with short timeout)
 async function fetchOgImage(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
@@ -65,21 +65,36 @@ async function fetchOgImage(url: string): Promise<string | null> {
         'User-Agent': 'Mozilla/5.0 (compatible; TVK-Bot/1.0)',
         'Accept': 'text/html'
       },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000), // 3 second timeout
       redirect: 'follow'
     })
 
     if (!response.ok) return null
 
-    const html = await response.text()
+    // Only read first 50KB to find og:image
+    const reader = response.body?.getReader()
+    if (!reader) return null
 
-    // Extract og:image
-    const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+    let html = ''
+    const decoder = new TextDecoder()
 
-    if (ogImage) return ogImage[1]
+    while (html.length < 50000) {
+      const { done, value } = await reader.read()
+      if (done) break
+      html += decoder.decode(value, { stream: true })
 
-    // Try twitter:image
+      // Check if we found og:image
+      const ogImage = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)
+      if (ogImage) {
+        reader.cancel()
+        return ogImage[1]
+      }
+    }
+
+    reader.cancel()
+
+    // Try twitter:image in what we have
     const twitterImage = html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
       || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i)
 
@@ -187,7 +202,7 @@ async function parseRssFeed(url: string, sourceName: string): Promise<RssItem[]>
     // Simple XML parsing for RSS items
     const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/gi) || []
 
-    for (const itemXml of itemMatches.slice(0, 20)) { // Limit to 20 items per feed
+    for (const itemXml of itemMatches.slice(0, 10)) { // Limit to 10 items per feed
       const title = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim()
       const link = itemXml.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim()
       const description = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim()
