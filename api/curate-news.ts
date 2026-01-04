@@ -1,22 +1,43 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
 
-// Default RSS sources - News18 Tamil with commonfeeds pattern (has <media:content> images)
-// Only using verified working feeds
+// RSS Sources - Google News for TVK-specific searches + News18 for broader coverage
 const DEFAULT_RSS_SOURCES = [
+  // Google News RSS - TVK specific searches (pre-filtered, need og:image fetch)
+  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=%22TVK%22+OR+%22%E0%AE%A4%E0%AE%B5%E0%AF%86%E0%AE%95%22+OR+%22Tamilaga+Vettri+Kazhagam%22&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - TVK IT Wing', url: 'https://news.google.com/rss/search?q=%22TVK+IT+Wing%22+OR+%22TVK+%E0%AE%90%E0%AE%9F%E0%AE%BF%22&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Vijay Politics', url: 'https://news.google.com/rss/search?q=%E0%AE%B5%E0%AE%BF%E0%AE%9C%E0%AE%AF%E0%AF%8D+%E0%AE%85%E0%AE%B0%E0%AE%9A%E0%AE%BF%E0%AE%AF%E0%AE%B2%E0%AF%8D+OR+%E0%AE%A4%E0%AE%B3%E0%AE%AA%E0%AE%A4%E0%AE%BF+%E0%AE%95%E0%AE%9F%E0%AF%8D%E0%AE%9A%E0%AE%BF&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Sengottaiyan', url: 'https://news.google.com/rss/search?q=%E0%AE%9A%E0%AF%86%E0%AE%99%E0%AF%8D%E0%AE%95%E0%AF%8A%E0%AE%9F%E0%AF%8D%E0%AE%9F%E0%AF%88%E0%AE%AF%E0%AE%A9%E0%AF%8D+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+
+  // News18 Tamil - has embedded images, broader coverage (requires keyword filtering)
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
-  { name: 'News18 Tamil - Entertainment', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/entertainment.xml', category: 'cinema' },
 ]
 
-// Keywords to match (English and Tamil)
-const TVK_KEYWORDS = [
-  // English keywords
-  'tvk', 'tamilaga vettri kazhagam', 'vijay', 'actor vijay', 'thalapathy',
-  'sengottaiyan', 'bussy anand', 'bussy ananth', 'tvk it wing',
-  // Tamil keywords
-  'விஜய்', 'தளபதி', 'தமிழக வெற்றிக் கழகம்', 'செங்கொட்டையன்',
-  'பஸ்ஸி ஆனந்த்', 'டிவிகே', 'வெற்றிக் கழகம்'
+// STRICT TVK Keywords - These alone are sufficient to include
+const STRICT_TVK_KEYWORDS = [
+  // Party names
+  'tvk', 'தவெக', 'tamilaga vettri kazhagam', 'தமிழக வெற்றிக் கழகம்', 'வெற்றிக் கழகம்',
+  // TVK IT Wing
+  'tvk it wing', 'tvk ஐடி விங்', 'tvk it', 'டிவிகே ஐடி',
+  // Party leaders (not Vijay - he needs context)
+  'sengottaiyan', 'செங்கொட்டையன்', 'sengottiayan',
+  'bussy anand', 'bussy ananth', 'பஸ்ஸி ஆனந்த்', 'பஸி ஆனந்த்',
+]
+
+// CONDITIONAL Keywords - Need political context to include
+const CONDITIONAL_KEYWORDS = [
+  'vijay', 'விஜய்', 'thalapathy', 'தளபதி', 'actor vijay'
+]
+
+// Political context words - required with conditional keywords
+const POLITICAL_CONTEXT = [
+  // English
+  'party', 'politics', 'political', 'rally', 'campaign', 'election', 'vote',
+  'leader', 'chief', 'member', 'join', 'speech', 'announce', 'launch',
+  // Tamil
+  'கட்சி', 'அரசியல்', 'பேரணி', 'தேர்தல்', 'வாக்கு', 'பிரச்சாரம்',
+  'தலைவர்', 'உறுப்பினர்', 'இணைவு', 'உரை', 'அறிவிப்பு', 'தொடக்கம்'
 ]
 
 // Negative sentiment words to filter out
@@ -137,14 +158,34 @@ function extractImageUrl(item: any, content: string): string | null {
   return null
 }
 
-// Check if content matches TVK keywords
+// Check if content matches TVK keywords (strict matching)
 function matchesKeywords(text: string): string[] {
   const lowerText = text.toLowerCase()
   const matched: string[] = []
 
-  for (const keyword of TVK_KEYWORDS) {
+  // Check STRICT keywords first - any match is sufficient
+  for (const keyword of STRICT_TVK_KEYWORDS) {
     if (lowerText.includes(keyword.toLowerCase())) {
       matched.push(keyword)
+    }
+  }
+
+  // If strict keywords found, return them
+  if (matched.length > 0) {
+    return matched
+  }
+
+  // Check CONDITIONAL keywords - need political context
+  const hasConditional = CONDITIONAL_KEYWORDS.some(k => lowerText.includes(k.toLowerCase()))
+  if (hasConditional) {
+    const hasPoliticalContext = POLITICAL_CONTEXT.some(ctx => lowerText.includes(ctx.toLowerCase()))
+    if (hasPoliticalContext) {
+      // Find which conditional keywords matched
+      for (const keyword of CONDITIONAL_KEYWORDS) {
+        if (lowerText.includes(keyword.toLowerCase())) {
+          matched.push(keyword + ' (political)')
+        }
+      }
     }
   }
 
@@ -321,14 +362,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const fullText = `${item.title} ${item.description || ''}`
 
-          // For TVK category sources (Google News searches), skip keyword check
-          // since they're already pre-filtered by search query
+          // For TVK category sources (Google News searches), they're pre-filtered
+          // Still run keyword matching to identify what was matched
           let matchedKeywords: string[] = []
           if (source.category === 'tvk') {
-            // Auto-assign keywords based on content
-            matchedKeywords = ['TVK']
-            if (fullText.toLowerCase().includes('vijay') || fullText.includes('விஜய்')) {
-              matchedKeywords.push('Vijay')
+            // Pre-filtered by Google search - extract what matched
+            matchedKeywords = matchesKeywords(fullText)
+            if (matchedKeywords.length === 0) {
+              // Google search matched but our keywords didn't - still include with generic tag
+              matchedKeywords = ['TVK (search)']
             }
           } else {
             // For general news sources, require keyword matching
