@@ -47,12 +47,15 @@ const NEGATIVE_KEYWORDS = [
   'மோசடி', 'ஊழல்', 'கைது', 'புகார்', 'தோல்வி',
 ]
 
-// Google News RSS feeds for TVK-specific news
+// Direct Tamil news RSS feeds (more reliable than Google News)
 const RSS_FEEDS = [
-  { name: 'TVK Vijay News', url: 'https://news.google.com/rss/search?q=TVK+Vijay+party&hl=en-IN&gl=IN&ceid=IN:en' },
-  { name: 'TVK Tamil News', url: 'https://news.google.com/rss/search?q=தமிழக+வெற்றி+கழகம்&hl=ta&gl=IN&ceid=IN:ta' },
-  { name: 'Vijay Political', url: 'https://news.google.com/rss/search?q=Vijay+political+party+Tamil&hl=en-IN&gl=IN&ceid=IN:en' },
-  { name: 'Tamilaga Vettri', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=en-IN&gl=IN&ceid=IN:en' },
+  // Tamil news sites with direct RSS
+  { name: 'Dinamalar', url: 'https://www.dinamalar.com/rss/rssfeeds.asp?cat=ta' },
+  { name: 'Dinakaran', url: 'https://www.dinakaran.com/feed' },
+  { name: 'Vikatan', url: 'https://www.vikatan.com/rss/tamilnadu' },
+  { name: 'Puthiyathalaimurai', url: 'https://www.puthiyathalaimurai.com/feeds/news/tamilnadu' },
+  // Google News as fallback
+  { name: 'Google TVK', url: 'https://news.google.com/rss/search?q=TVK+Vijay+Tamilaga+Vettri&hl=ta&gl=IN&ceid=IN:ta' },
 ]
 
 // TVK-themed fallback images for news without OG images
