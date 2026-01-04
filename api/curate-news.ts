@@ -3,19 +3,16 @@ import { initDB, insertNews, newsUrlExists, addRssSource, updateRssSourceFetched
 
 // Default RSS sources - Tamil news channels covering politics/cinema
 const DEFAULT_RSS_SOURCES = [
-  // Tamil News - Politics
+  // Google News RSS for TVK-specific searches (most reliable for TVK content)
+  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=TVK+தமிழக+வெற்றி&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Vijay Politics', url: 'https://news.google.com/rss/search?q=விஜய்+அரசியல்+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Thalapathy Vijay', url: 'https://news.google.com/rss/search?q=தளபதி+விஜய்+கட்சி&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  { name: 'Google News - Sengottaiyan', url: 'https://news.google.com/rss/search?q=செங்கோட்டையன்+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+
+  // Tamil News - Politics (broader coverage)
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/rss/tamilnadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/rss/politics.xml', category: 'politics' },
-  { name: 'Zee News Tamil', url: 'https://zeenews.india.com/tamil/tamilnadu/rss.xml', category: 'politics' },
-  { name: 'India Today Tamil', url: 'https://www.indiatoday.in/rss/home/tamilnadu', category: 'politics' },
-
-  // Tamil Cinema News (Vijay related)
   { name: 'News18 Tamil - Cinema', url: 'https://tamil.news18.com/rss/movies.xml', category: 'cinema' },
-  { name: 'Behindwoods', url: 'https://www.behindwoods.com/tamil-movies/rss/news-rss-feed.xml', category: 'cinema' },
-
-  // Google News RSS for specific searches
-  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=TVK+Vijay+Tamil&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Tamilaga Vettri Kazhagam', url: 'https://news.google.com/rss/search?q=Tamilaga+Vettri+Kazhagam&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
 ]
 
 // Keywords to match (English and Tamil)
@@ -246,13 +243,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await initDB()
 
-    // Initialize default RSS sources if needed
-    const existingSources = await getRssSources(false)
-    if (existingSources.length === 0) {
-      console.log('Adding default RSS sources...')
-      for (const source of DEFAULT_RSS_SOURCES) {
-        await addRssSource(source)
-      }
+    // Always sync default RSS sources (in case they changed)
+    console.log('Syncing default RSS sources...')
+    for (const source of DEFAULT_RSS_SOURCES) {
+      await addRssSource(source)
     }
 
     // Get active RSS sources
@@ -274,23 +268,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await updateRssSourceFetched(source.url)
 
         for (const item of items) {
-          // Skip if no image
-          if (!item.imageUrl) {
-            totalSkipped++
-            continue
-          }
-
           // Check if already exists
           if (await newsUrlExists(item.link)) {
             totalSkipped++
             continue
           }
 
-          // Check keywords
           const fullText = `${item.title} ${item.description || ''}`
-          const matchedKeywords = matchesKeywords(fullText)
 
-          if (matchedKeywords.length === 0) {
+          // For TVK category sources (Google News searches), skip keyword check
+          // since they're already pre-filtered by search query
+          let matchedKeywords: string[] = []
+          if (source.category === 'tvk') {
+            // Auto-assign keywords based on content
+            matchedKeywords = ['TVK']
+            if (fullText.toLowerCase().includes('vijay') || fullText.includes('விஜய்')) {
+              matchedKeywords.push('Vijay')
+            }
+          } else {
+            // For general news sources, require keyword matching
+            matchedKeywords = matchesKeywords(fullText)
+            if (matchedKeywords.length === 0) {
+              totalSkipped++
+              continue
+            }
+          }
+
+          // Skip if no image (but log it for debugging)
+          if (!item.imageUrl) {
+            console.log(`No image: ${item.title.substring(0, 40)}...`)
             totalSkipped++
             continue
           }
@@ -300,7 +306,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Skip negative news (sentiment < -0.2)
           if (sentimentScore < -0.2) {
-            console.log(`Skipping negative news: ${item.title.substring(0, 50)}...`)
+            console.log(`Skipping negative: ${item.title.substring(0, 40)}...`)
             totalSkipped++
             continue
           }
