@@ -488,10 +488,14 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           description = descMatch[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().substring(0, 300)
         }
 
-        // Check description for negative content
-        if (description && !isValidContent(description)) {
-          console.log(`Skipped (negative description): ${title.substring(0, 40)}...`)
-          continue
+        // Only check description for NEGATIVE keywords (not relevance - title already validated)
+        if (description) {
+          const descLower = description.toLowerCase()
+          const hasNegativeDesc = NEGATIVE_KEYWORDS.some(kw => descLower.includes(kw))
+          if (hasNegativeDesc) {
+            console.log(`Skipped (negative description): ${title.substring(0, 40)}...`)
+            continue
+          }
         }
 
         // Use RSS image or fallback to TVK-themed images
@@ -592,23 +596,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Starting media curation:', runId)
     await initDB()
 
-    // Clean up news with bad images, fallback images, or bad descriptions
-    // Also remove items with fallback images so they can be re-fetched with real OG images
+    // Clean up news with bad Google images or bad descriptions
+    // NOTE: We now use TVK fallback images intentionally for Google News items, so don't delete those
     const db = getTurso()
     const badDataCleanup = await db.execute({
       sql: `DELETE FROM news WHERE
-            image_url LIKE '%lh3.googleusercontent.com%' OR
             image_url LIKE '%gstatic.com/gnews%' OR
-            image_url LIKE '%pbs.twimg.com%' OR
-            image_url LIKE '%wallpaperaccess.com%' OR
-            image_url LIKE '%rajkaran.in%' OR
-            image_url LIKE '%assettype.com/gulfnews%' OR
+            image_url LIKE '%google.com/images/branding%' OR
             description LIKE '%Comprehensive up-to-date news coverage%' OR
             description LIKE '%<a href=%' OR
             description LIKE '%&lt;a href=%'`,
       args: []
     })
-    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad/fallback images`)
+    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad data`)
 
     // Cleanup old media
     const cleaned = await cleanupOldContent()
