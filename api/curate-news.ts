@@ -2,17 +2,17 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertNews, newsUrlExists, addRssSource, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
 
 // Default RSS sources - Tamil news channels covering politics/cinema
+// Using correct commonfeeds pattern for News18 Tamil which has <media:content> images
 const DEFAULT_RSS_SOURCES = [
-  // Google News RSS for TVK-specific searches (most reliable for TVK content)
-  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=TVK+தமிழக+வெற்றி&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Vijay Politics', url: 'https://news.google.com/rss/search?q=விஜய்+அரசியல்+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Thalapathy Vijay', url: 'https://news.google.com/rss/search?q=தளபதி+விஜய்+கட்சி&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Sengottaiyan', url: 'https://news.google.com/rss/search?q=செங்கோட்டையன்+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  // News18 Tamil - Correct RSS URLs with images (commonfeeds pattern)
+  { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
+  { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
+  { name: 'News18 Tamil - Cinema', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/movies.xml', category: 'cinema' },
+  { name: 'News18 Tamil - India', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/india.xml', category: 'politics' },
 
-  // Tamil News - Politics (broader coverage)
-  { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/rss/tamilnadu.xml', category: 'politics' },
-  { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/rss/politics.xml', category: 'politics' },
-  { name: 'News18 Tamil - Cinema', url: 'https://tamil.news18.com/rss/movies.xml', category: 'cinema' },
+  // Other Tamil news sources with images
+  { name: 'OneIndia Tamil', url: 'https://tamil.oneindia.com/rss/tamil-news-fb.xml', category: 'politics' },
+  { name: 'Behindwoods', url: 'https://www.behindwoods.com/rss/behindwoods-news.xml', category: 'cinema' },
 ]
 
 // Keywords to match (English and Tamil)
