@@ -59,6 +59,19 @@ export async function initDB(): Promise<void> {
   `)
 
   // News table (curated news articles)
+  // Check if table needs migration (missing source_name column)
+  try {
+    const tableInfo = await db.execute(`PRAGMA table_info(news)`)
+    const hasSourceName = tableInfo.rows.some(row => row.name === 'source_name')
+    if (!hasSourceName) {
+      // Table has old schema, drop and recreate
+      console.log('News table has old schema, recreating...')
+      await db.execute(`DROP TABLE IF EXISTS news`)
+    }
+  } catch {
+    // Table doesn't exist, will be created below
+  }
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS news (
       id TEXT PRIMARY KEY,
