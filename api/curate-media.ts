@@ -36,10 +36,15 @@ const NEGATIVE_KEYWORDS = [
   // Negative Sentiment
   'against', 'oppose', 'criticize', 'attack', 'slam', 'fail', 'flop', 'controversy',
   'arrest', 'case', 'complaint', 'troll', 'mock', 'defeat', 'scam', 'scandal',
+  // Financial crimes / fraud
+  'trading', 'moneylaundering', 'money laundering', 'fraud', 'cheat', 'cheating',
+  'ponzi', 'investment scam', 'fake', 'forgery', 'bribe', 'corruption',
   // Other Famous People named Vijay
   'vijay sethupathi', 'vijay devarakonda', 'vijay antony',
   // Irrelevant Topics (e.g., sports)
   'cricket', 'football', 'sports', 'match', 'score', 'goal', 'century', 'bowling', 'batting', 'ipl',
+  // Tamil negative words
+  'மோசடி', 'ஊழல்', 'கைது', 'புகார்', 'தோல்வி',
 ]
 
 // Google News RSS feeds for TVK-specific news
@@ -59,22 +64,38 @@ const TVK_FALLBACK_IMAGES = [
   'https://pbs.twimg.com/media/GXi9RcgXcAAXKY2?format=jpg&name=medium', // Vijay meeting
 ]
 
-// Decode Google News URL to get actual article URL
-function decodeGoogleNewsUrl(url: string): string | null {
+// Follow Google News redirect to get actual article URL
+async function resolveGoogleNewsUrl(url: string): Promise<string> {
   try {
-    // Google News URLs contain base64 encoded article URLs
-    // Format: https://news.google.com/rss/articles/CBMi...
-    const match = url.match(/articles\/([A-Za-z0-9_-]+)/)
-    if (!match) return url
+    // If not a Google News URL, return as-is
+    if (!url.includes('news.google.com')) return url
 
-    const encoded = match[1]
-    // Try to decode - Google uses modified base64
-    const decoded = Buffer.from(encoded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+    // Follow the redirect to get actual URL
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'manual', // Don't auto-follow, we want the redirect URL
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    })
 
-    // Extract URL from decoded string (usually starts with http)
-    const urlMatch = decoded.match(/(https?:\/\/[^\s"'<>]+)/i)
-    return urlMatch?.[1] || url
-  } catch {
+    // Check for redirect
+    const location = response.headers.get('location')
+    if (location && location.startsWith('http')) {
+      console.log(`Resolved: ${url.substring(0, 40)}... -> ${location.substring(0, 50)}...`)
+      return location
+    }
+
+    // Try to extract from response body (some Google News pages have JS redirects)
+    const html = await response.text()
+    const urlMatch = html.match(/href="(https?:\/\/(?!news\.google)[^"]+)"/i)
+    if (urlMatch?.[1]) {
+      return urlMatch[1]
+    }
+
+    return url
+  } catch (error) {
+    console.error('Failed to resolve Google News URL:', error)
     return url
   }
 }
@@ -225,15 +246,28 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
 
         if (!link || !isValidContent(title)) continue
 
-        // Decode Google News URL to get real article URL
-        const realUrl = decodeGoogleNewsUrl(link.trim())
+        // Resolve Google News URL to get real article URL
+        const realUrl = await resolveGoogleNewsUrl(link.trim())
         if (realUrl && realUrl !== link) {
-          console.log(`Decoded URL: ${realUrl.substring(0, 60)}...`)
           link = realUrl
+        }
+
+        // Also check URL for negative keywords (catches URLs like /trading_moneylaundering/)
+        const urlLower = link.toLowerCase()
+        const hasNegativeUrl = NEGATIVE_KEYWORDS.some(kw => urlLower.includes(kw.replace(' ', '')))
+        if (hasNegativeUrl) {
+          console.log(`Skipped (negative URL): ${link.substring(0, 50)}...`)
+          continue
         }
 
         // Fetch OG metadata from actual article
         const ogData = await fetchOGMetadata(link)
+
+        // Also check OG description for negative content
+        if (ogData.description && !isValidContent(ogData.description)) {
+          console.log(`Skipped (negative description): ${title.substring(0, 40)}...`)
+          continue
+        }
 
         // Use OG image or fallback to TVK-themed images
         const imageUrl = ogData.image || TVK_FALLBACK_IMAGES[news.length % TVK_FALLBACK_IMAGES.length]
@@ -242,6 +276,13 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           console.log(`Found: ${title.substring(0, 40)}... with OG image`)
         } else {
           console.log(`Found: ${title.substring(0, 40)}... using fallback image`)
+        }
+
+        // Check for duplicates by URL before adding
+        const isDuplicate = news.some(n => n.url === link)
+        if (isDuplicate) {
+          console.log(`Skipped (duplicate): ${title.substring(0, 40)}...`)
+          continue
         }
 
         // Add news item with image (OG or fallback)
