@@ -218,9 +218,30 @@ async function fetchOGMetadata(url: string): Promise<{ image?: string; descripti
                    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)?.[1] ||
                    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]
 
+    // Filter out Google News images (they're just logos, not article images)
+    let validImage = ogImage?.startsWith('http') ? ogImage : undefined
+    if (validImage && (
+      validImage.includes('lh3.googleusercontent.com') ||
+      validImage.includes('gstatic.com/gnews') ||
+      validImage.includes('google.com/favicon')
+    )) {
+      validImage = undefined // Force fallback to TVK images
+    }
+
+    // Filter out Google's generic description and HTML
+    let validDesc = ogDesc?.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').substring(0, 300)
+    if (validDesc && (
+      validDesc.includes('Comprehensive up-to-date news coverage') ||
+      validDesc.includes('<a href=') ||
+      validDesc.includes('Google News') ||
+      validDesc.startsWith('<')
+    )) {
+      validDesc = undefined // Will use title as description
+    }
+
     return {
-      image: ogImage?.startsWith('http') ? ogImage : undefined,
-      description: ogDesc?.replace(/&amp;/g, '&').replace(/&quot;/g, '"').substring(0, 300),
+      image: validImage,
+      description: validDesc,
     }
   } catch {
     return {}
@@ -246,18 +267,14 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
-        // Get the REAL article URL from <source url="..."> attribute (not the encoded Google link)
-        const sourceUrl = item.match(/<source[^>]+url="([^"]+)"/)?.[1]
-        const googleLink = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
-
-        // Prefer source URL, fallback to Google link
-        let link = sourceUrl || googleLink
+        // Get the link from RSS - use Google link for click-through (it redirects properly)
+        const link = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
         if (!link) continue
 
-        // Validate content
+        // Validate title content
         if (!isValidContent(title)) continue
 
-        // Also check URL for negative keywords (catches URLs like /trading_moneylaundering/)
+        // Check URL for negative keywords
         const urlLower = link.toLowerCase()
         const hasNegativeUrl = NEGATIVE_KEYWORDS.some(kw => urlLower.includes(kw.replace(' ', '')))
         if (hasNegativeUrl) {
@@ -265,8 +282,13 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           continue
         }
 
-        // Fetch OG metadata from actual article
-        const ogData = await fetchOGMetadata(link)
+        // For Google News URLs, we can't reliably fetch OG metadata
+        // Use TVK fallback images and title as description
+        let ogData: { image?: string; description?: string } = {}
+        if (!link.includes('news.google.com')) {
+          // Only try to fetch OG metadata for non-Google URLs
+          ogData = await fetchOGMetadata(link)
+        }
 
         // Also check OG description for negative content
         if (ogData.description && !isValidContent(ogData.description)) {
@@ -290,13 +312,23 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           continue
         }
 
+        // Clean title - remove source suffix (e.g., "Title - SourceName" -> "Title")
+        let cleanTitle = title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&')
+        const sourceSeparator = cleanTitle.lastIndexOf(' - ')
+        if (sourceSeparator > 20) {
+          cleanTitle = cleanTitle.substring(0, sourceSeparator)
+        }
+
+        // Use clean title as description if no OG description
+        const description = ogData.description || cleanTitle
+
         // Add news item with image (OG or fallback)
         news.push({
           type: 'news',
           url: link,
           thumbnail_url: imageUrl,
-          title: title.trim().replace(/<[^>]*>/g, '').replace(/&amp;/g, '&'),
-          description: ogData.description || title,
+          title: cleanTitle,
+          description: description,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
