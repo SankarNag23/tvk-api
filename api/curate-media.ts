@@ -48,23 +48,17 @@ const NEGATIVE_KEYWORDS = [
   'மோசடி', 'ஊழல்', 'கைது', 'புகார்', 'தோல்வி',
 ]
 
-// Direct Tamil news RSS feeds - prioritize those with direct URLs and OG images
+// Tamil/India news RSS feeds with images (media:content, media:thumbnail)
+// Searching for: Vijay, TVK, Tamilaga Vettri Kazhagam, Sengottaiyan, Bussy Anand
 const RSS_FEEDS = [
-  // Google News searches for TVK-specific content (most relevant)
-  { name: 'Google TVK Tamil', url: 'https://news.google.com/rss/search?q=TVK+Vijay+Tamilaga+Vettri&hl=ta&gl=IN&ceid=IN:ta' },
-  { name: 'Google Vijay Politics', url: 'https://news.google.com/rss/search?q=Vijay+politics+2026&hl=en-IN&gl=IN&ceid=IN:en' },
+  // English news with working RSS + images
+  { name: 'Indian Express Chennai', url: 'https://indianexpress.com/section/cities/chennai/feed/' },
+  { name: 'Indian Express India', url: 'https://indianexpress.com/section/india/feed/' },
+  { name: 'News18 Politics', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/politics.xml' },
+  { name: 'News18 India', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/india.xml' },
 
-  // Direct Tamil news RSS with politics sections
-  { name: 'Dinamalar Politics', url: 'https://www.dinamalar.com/rss/rssfeeds.asp?cat=po' },
-  { name: 'Dinamalar TN', url: 'https://www.dinamalar.com/rss/rssfeeds.asp?cat=ta' },
-  { name: 'Vikatan Politics', url: 'https://www.vikatan.com/rss/politics' },
-  { name: 'Vikatan TN', url: 'https://www.vikatan.com/rss/tamilnadu' },
-  { name: 'Puthiyathalaimurai', url: 'https://www.puthiyathalaimurai.com/feeds/news/politics' },
-
-  // English Tamil news
-  { name: 'Hindu TN', url: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss' },
-  { name: 'NDTV Chennai', url: 'https://feeds.feedburner.com/ndtv/TNPy' },
-  { name: 'Indian Express TN', url: 'https://indianexpress.com/section/cities/chennai/feed/' },
+  // Tamil Nadu specific
+  { name: 'News18 Tamil Nadu', url: 'https://www.news18.com/commonfeeds/v1/eng/rss/tamil-nadu.xml' },
 ]
 
 // TVK-themed fallback images for news without OG images
