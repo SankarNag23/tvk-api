@@ -437,10 +437,17 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           continue
         }
 
-        // Fetch OG metadata from the actual article URL (not Google News URL)
+        // Fetch OG metadata from the article URL
+        // Try even for unresolved Google News URLs - might still get metadata
         let ogData: { image?: string; description?: string } = {}
-        if (!articleUrl.includes('news.google.com')) {
+        try {
           ogData = await fetchOGMetadata(articleUrl)
+          if (!ogData.image && articleUrl !== rawLink) {
+            // If no image from resolved URL, try original link too
+            ogData = await fetchOGMetadata(rawLink)
+          }
+        } catch (e) {
+          console.log(`OG fetch failed for: ${articleUrl.substring(0, 50)}...`)
         }
 
         // Also check OG description for negative content
