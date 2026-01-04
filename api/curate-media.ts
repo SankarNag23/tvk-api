@@ -625,7 +625,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       completedAt: new Date().toISOString(),
       stats,
       cleaned,
-      message: `Added ${totalAdded} items (${stats.added_news} news, ${stats.added_media} media)`,
+      badDataCleaned: badDataCleanup.rowsAffected,
+      message: `Added ${totalAdded} items (${stats.added_news} news, ${stats.added_media} media). Cleaned ${badDataCleanup.rowsAffected} bad/fallback items.`,
     })
 
   } catch (error) {
