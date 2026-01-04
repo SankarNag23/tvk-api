@@ -244,16 +244,18 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
 
       for (const item of items.slice(0, 8)) { // Limit per feed for speed
         const title = item.match(/<title>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/title>/)?.[1] || ''
-        let link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
-        if (!link || !isValidContent(title)) continue
+        // Get the REAL article URL from <source url="..."> attribute (not the encoded Google link)
+        const sourceUrl = item.match(/<source[^>]+url="([^"]+)"/)?.[1]
+        const googleLink = item.match(/<link>([^<]*)<\/link>/)?.[1] || ''
 
-        // Resolve Google News URL to get real article URL
-        const realUrl = await resolveGoogleNewsUrl(link.trim())
-        if (realUrl && realUrl !== link) {
-          link = realUrl
-        }
+        // Prefer source URL, fallback to Google link
+        let link = sourceUrl || googleLink
+        if (!link) continue
+
+        // Validate content
+        if (!isValidContent(title)) continue
 
         // Also check URL for negative keywords (catches URLs like /trading_moneylaundering/)
         const urlLower = link.toLowerCase()
