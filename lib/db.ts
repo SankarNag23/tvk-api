@@ -664,7 +664,7 @@ export interface NewsItem {
   updated_at?: string
 }
 
-export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at'>): Promise<boolean> {
+export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string }> {
   const db = getTurso()
   try {
     await db.execute({
@@ -682,10 +682,11 @@ export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at
         news.keywords_matched || null, news.sentiment_score, news.relevance_score, news.status
       ]
     })
-    return true
-  } catch (err) {
-    console.error('Error inserting news:', err)
-    return false
+    return { success: true }
+  } catch (err: any) {
+    const errMsg = err?.message || String(err)
+    console.error('Error inserting news:', errMsg, 'URL:', news.url?.substring(0, 50))
+    return { success: false, error: errMsg }
   }
 }
 
