@@ -298,6 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalAdded = 0
     let totalSkipped = 0
     const errors: string[] = []
+    const skipReasons = { duplicate: 0, keyword: 0, image: 0, sentiment: 0, insertFail: 0 }
 
     // Process each RSS source
     for (const source of rssSources) {
@@ -309,12 +310,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await updateRssSourceFetched(source.url)
 
         console.log(`Processing ${items.length} items from ${source.name}`)
-        let keywordSkips = 0, imageSkips = 0, sentimentSkips = 0, duplicateSkips = 0
 
         for (const item of items) {
           // Check if already exists
           if (await newsUrlExists(item.link)) {
-            duplicateSkips++
+            skipReasons.duplicate++
             totalSkipped++
             continue
           }
@@ -334,7 +334,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // For general news sources, require keyword matching
             matchedKeywords = matchesKeywords(fullText)
             if (matchedKeywords.length === 0) {
-              keywordSkips++
+              skipReasons.keyword++
               totalSkipped++
               continue
             }
@@ -349,7 +349,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Skip if still no image
           if (!imageUrl) {
-            imageSkips++
+            skipReasons.image++
             totalSkipped++
             continue
           }
@@ -359,7 +359,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // Skip negative news (sentiment < -0.2)
           if (sentimentScore < -0.2) {
-            sentimentSkips++
+            skipReasons.sentiment++
             totalSkipped++
             continue
           }
@@ -395,11 +395,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             totalAdded++
             console.log(`Added: ${item.title.substring(0, 50)}... [${matchedKeywords.join(', ')}]`)
           } else {
+            skipReasons.insertFail++
             console.log(`Failed to insert: ${item.title.substring(0, 50)}...`)
           }
         }
-
-        console.log(`${source.name} summary: dup=${duplicateSkips}, kw=${keywordSkips}, img=${imageSkips}, sent=${sentimentSkips}`)
       } catch (sourceError: any) {
         errors.push(`${source.name}: ${sourceError.message}`)
         console.error(`Error with ${source.name}:`, sourceError)
@@ -431,6 +430,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         items_fetched: totalFetched,
         items_added: totalAdded,
         items_skipped: totalSkipped,
+        skip_reasons: skipReasons,
         cleaned_up: cleanedUp
       },
       errors: errors.length > 0 ? errors : undefined
