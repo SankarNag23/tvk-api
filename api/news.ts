@@ -7,13 +7,13 @@ import { getNews, getLastCurationTime, getStats } from '../lib/db'
  * Curated every 4 hours by GitHub Action
  */
 
-// TVK fallback images for news without images
+// TVK fallback images for news without images (verified working URLs)
 const TVK_FALLBACK_IMAGES = [
-  'https://pbs.twimg.com/profile_images/1820095725199663104/F-sJsNxg_400x400.jpg',
-  'https://pbs.twimg.com/media/GXhQZ6jWQAApzPd?format=jpg&name=medium',
-  'https://pbs.twimg.com/media/GXhQZ6hXMAA6XBd?format=jpg&name=medium',
-  'https://pbs.twimg.com/media/GYG1aBVWIAAU1hO?format=jpg&name=medium',
-  'https://pbs.twimg.com/media/GXi9RcgXcAAXKY2?format=jpg&name=medium',
+  'https://wallpaperaccess.com/full/14775373.jpg',
+  'https://rajkaran.in/wp-content/uploads/2025/02/vijay.jpg',
+  'https://media.assettype.com/gulfnews/2025-04-12/ohhjomle/202504123375215.jpg',
+  'https://wallpaperaccess.com/full/14775373.jpg',
+  'https://rajkaran.in/wp-content/uploads/2025/02/vijay.jpg',
 ]
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers

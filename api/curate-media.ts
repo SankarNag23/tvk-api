@@ -60,12 +60,13 @@ const RSS_FEEDS = [
 ]
 
 // TVK-themed fallback images for news without OG images
+// Using verified working URLs from hero-images and reliable sources
 const TVK_FALLBACK_IMAGES = [
-  'https://pbs.twimg.com/profile_images/1820095725199663104/F-sJsNxg_400x400.jpg', // TVK logo
-  'https://pbs.twimg.com/media/GXhQZ6jWQAApzPd?format=jpg&name=medium', // Vijay speech
-  'https://pbs.twimg.com/media/GXhQZ6hXMAA6XBd?format=jpg&name=medium', // TVK rally
-  'https://pbs.twimg.com/media/GYG1aBVWIAAU1hO?format=jpg&name=medium', // TVK event
-  'https://pbs.twimg.com/media/GXi9RcgXcAAXKY2?format=jpg&name=medium', // Vijay meeting
+  'https://wallpaperaccess.com/full/14775373.jpg', // Vijay portrait
+  'https://rajkaran.in/wp-content/uploads/2025/02/vijay.jpg', // Vijay TVK
+  'https://media.assettype.com/gulfnews/2025-04-12/ohhjomle/202504123375215.jpg', // TVK event
+  'https://wallpaperaccess.com/full/14775373.jpg', // Vijay portrait (repeat for variety)
+  'https://rajkaran.in/wp-content/uploads/2025/02/vijay.jpg', // Vijay TVK (repeat)
 ]
 
 // Follow Google News redirect to get actual article URL
@@ -395,18 +396,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('Starting media curation:', runId)
     await initDB()
 
-    // Clean up news with Google logos or bad descriptions
+    // Clean up news with bad images or descriptions
     const db = getTurso()
     const badDataCleanup = await db.execute({
       sql: `DELETE FROM news WHERE
             image_url LIKE '%lh3.googleusercontent.com%' OR
             image_url LIKE '%gstatic.com/gnews%' OR
+            image_url LIKE '%pbs.twimg.com%' OR
             description LIKE '%Comprehensive up-to-date news coverage%' OR
             description LIKE '%<a href=%' OR
             description LIKE '%&lt;a href=%'`,
       args: []
     })
-    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad Google data`)
+    console.log(`Cleaned ${badDataCleanup.rowsAffected} news items with bad data`)
 
     // Cleanup old media
     const cleaned = await cleanupOldContent()
