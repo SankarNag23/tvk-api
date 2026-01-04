@@ -341,41 +341,43 @@ async function fetchOGMetadata(url: string): Promise<{ image?: string; descripti
                    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)?.[1] ||
                    html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]
 
-    // Filter out Google News images and other non-article images
+    // Filter out logos and icons, but accept article images (even from Google CDN)
     let validImage = ogImage?.startsWith('http') ? ogImage : undefined
     if (validImage) {
       const imgLower = validImage.toLowerCase()
-      // Reject Google-related images (logos, not article images)
-      if (imgLower.includes('lh3.googleusercontent.com') ||
-          imgLower.includes('gstatic.com') ||
-          imgLower.includes('google.com/favicon') ||
-          imgLower.includes('google.com/images')) {
-        console.log(`Rejected Google image: ${validImage.substring(0, 50)}...`)
+
+      // Reject specific logo/icon patterns (NOT all Google images)
+      const isLogo = imgLower.includes('/favicon') ||
+                     imgLower.includes('/logo') ||
+                     imgLower.includes('/icon') ||
+                     imgLower.includes('gstatic.com/gnews') ||  // Google News logo
+                     imgLower.includes('google.com/images/branding') ||
+                     imgLower.endsWith('.ico') ||
+                     imgLower.includes('=s0-w50') ||  // Tiny thumbnails
+                     imgLower.includes('=s0-w100')
+
+      if (isLogo) {
+        console.log(`Rejected logo/icon: ${validImage.substring(0, 50)}...`)
         validImage = undefined
       }
-      // Accept images from known good sources
-      else if (imgLower.includes('dinamalar') ||
-               imgLower.includes('vikatan') ||
-               imgLower.includes('samayam') ||
-               imgLower.includes('thehindu') ||
-               imgLower.includes('indiatoday') ||
-               imgLower.includes('ndtv') ||
-               imgLower.includes('news18') ||
-               imgLower.includes('asianetnews') ||
-               imgLower.includes('deccanherald') ||
-               imgLower.includes('newindianexpress') ||
-               imgLower.includes('oneindia') ||
-               imgLower.includes('cloudfront') ||
-               imgLower.includes('amazonaws') ||
-               imgLower.includes('wp.com') ||
-               imgLower.includes('wordpress')) {
-        console.log(`Found good OG image: ${validImage.substring(0, 60)}...`)
+      // Accept larger Google-hosted images (they host actual article images)
+      else if (imgLower.includes('lh3.googleusercontent.com') && imgLower.includes('=s0-w')) {
+        // Check if it's a decent size (>200px)
+        const sizeMatch = imgLower.match(/=s0-w(\d+)/)
+        if (sizeMatch && parseInt(sizeMatch[1]) >= 200) {
+          console.log(`Found Google-hosted article image: ${validImage.substring(0, 60)}...`)
+        } else {
+          console.log(`Rejected small thumbnail: ${validImage.substring(0, 50)}...`)
+          validImage = undefined
+        }
       }
-      // For other images, check if they look like valid article images
+      // Accept images with proper extensions
       else if (validImage.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
         console.log(`Found article image: ${validImage.substring(0, 60)}...`)
-      } else {
-        console.log(`Unknown image source, keeping: ${validImage.substring(0, 60)}...`)
+      }
+      // Accept other URLs that look like images
+      else {
+        console.log(`Keeping image: ${validImage.substring(0, 60)}...`)
       }
     }
 
@@ -419,43 +421,26 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
         // Get the link from RSS
-        const rawLink = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
-        if (!rawLink) continue
+        const link = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
+        if (!link) continue
 
-        // Validate title content
+        // Validate title content (Step 3: Filter)
         if (!isValidContent(title)) continue
 
-        // Resolve Google News URLs to get actual article URL
-        let articleUrl = rawLink
-        let displayLink = rawLink // Keep original for click-through (better tracking)
-
-        if (rawLink.includes('news.google.com')) {
-          const resolved = await resolveGoogleNewsUrl(rawLink)
-          if (resolved && resolved !== rawLink) {
-            articleUrl = resolved
-            console.log(`Google News resolved: ${rawLink.substring(0, 40)}... -> ${articleUrl.substring(0, 50)}...`)
-          }
-        }
-
         // Check URL for negative keywords
-        const urlLower = articleUrl.toLowerCase()
+        const urlLower = link.toLowerCase()
         const hasNegativeUrl = NEGATIVE_KEYWORDS.some(kw => urlLower.includes(kw.replace(' ', '')))
         if (hasNegativeUrl) {
-          console.log(`Skipped (negative URL): ${articleUrl.substring(0, 50)}...`)
+          console.log(`Skipped (negative URL): ${link.substring(0, 50)}...`)
           continue
         }
 
-        // Fetch OG metadata from the article URL
-        // Try even for unresolved Google News URLs - might still get metadata
+        // Step 5: Fetch OG metadata directly from the link (no URL resolution needed)
         let ogData: { image?: string; description?: string } = {}
         try {
-          ogData = await fetchOGMetadata(articleUrl)
-          if (!ogData.image && articleUrl !== rawLink) {
-            // If no image from resolved URL, try original link too
-            ogData = await fetchOGMetadata(rawLink)
-          }
+          ogData = await fetchOGMetadata(link)
         } catch (e) {
-          console.log(`OG fetch failed for: ${articleUrl.substring(0, 50)}...`)
+          console.log(`OG fetch failed for: ${link.substring(0, 50)}...`)
         }
 
         // Also check OG description for negative content
@@ -474,7 +459,7 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         }
 
         // Check for duplicates by URL before adding
-        const isDuplicate = news.some(n => n.url === rawLink || n.url === articleUrl)
+        const isDuplicate = news.some(n => n.url === link)
         if (isDuplicate) {
           console.log(`Skipped (duplicate): ${title.substring(0, 40)}...`)
           continue
@@ -491,10 +476,9 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const description = ogData.description || cleanTitle
 
         // Add news item with image (OG or fallback)
-        // Use rawLink for click-through (Google News or direct) - it redirects properly
         news.push({
           type: 'news',
-          url: rawLink,
+          url: link,
           thumbnail_url: imageUrl,
           title: cleanTitle,
           description: description,
