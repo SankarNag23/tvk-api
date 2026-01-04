@@ -421,7 +421,7 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
         const pubDate = item.match(/<pubDate>([^<]+)<\/pubDate>/)?.[1]
 
         // Get the link from RSS
-        const link = item.match(/<link>([^<]*)<\/link>/)?.[1]?.trim() || ''
+        const link = item.match(/<link>(?:<!\[CDATA\[)?([^\]<]*)(?:\]\]>)?<\/link>/)?.[1]?.trim() || ''
         if (!link) continue
 
         // Validate title content (Step 3: Filter)
@@ -435,25 +435,70 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           continue
         }
 
-        // Step 5: Fetch OG metadata directly from the link (no URL resolution needed)
-        let ogData: { image?: string; description?: string } = {}
-        try {
-          ogData = await fetchOGMetadata(link)
-        } catch (e) {
-          console.log(`OG fetch failed for: ${link.substring(0, 50)}...`)
+        // Extract image directly from RSS (the RIGHT way!)
+        // 1. <media:content url="..."> (Media RSS)
+        // 2. <media:thumbnail url="...">
+        // 3. <enclosure url="..." type="image/...">
+        // 4. <img src="..."> in description
+        let imageUrl: string | undefined
+        let description: string | undefined
+
+        // Try media:content first (most common in news RSS)
+        const mediaContent = item.match(/<media:content[^>]+url=["']([^"']+)["']/i)
+        if (mediaContent?.[1]) {
+          imageUrl = mediaContent[1]
+          console.log(`Found media:content image: ${imageUrl.substring(0, 60)}...`)
         }
 
-        // Also check OG description for negative content
-        if (ogData.description && !isValidContent(ogData.description)) {
+        // Try media:thumbnail
+        if (!imageUrl) {
+          const mediaThumbnail = item.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i)
+          if (mediaThumbnail?.[1]) {
+            imageUrl = mediaThumbnail[1]
+            console.log(`Found media:thumbnail: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // Try enclosure with image type
+        if (!imageUrl) {
+          const enclosure = item.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image/i) ||
+                           item.match(/<enclosure[^>]+type=["']image[^"']*["'][^>]+url=["']([^"']+)["']/i)
+          if (enclosure?.[1]) {
+            imageUrl = enclosure[1]
+            console.log(`Found enclosure image: ${imageUrl.substring(0, 60)}...`)
+          }
+        }
+
+        // Try img src in description
+        if (!imageUrl) {
+          const descMatch = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)
+          if (descMatch?.[1]) {
+            const imgInDesc = descMatch[1].match(/<img[^>]+src=["']([^"']+)["']/i)
+            if (imgInDesc?.[1]) {
+              imageUrl = imgInDesc[1]
+              console.log(`Found img in description: ${imageUrl.substring(0, 60)}...`)
+            }
+          }
+        }
+
+        // Get description from RSS
+        const descMatch = item.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)
+        if (descMatch?.[1]) {
+          // Strip HTML tags from description
+          description = descMatch[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim().substring(0, 300)
+        }
+
+        // Check description for negative content
+        if (description && !isValidContent(description)) {
           console.log(`Skipped (negative description): ${title.substring(0, 40)}...`)
           continue
         }
 
-        // Use OG image or fallback to TVK-themed images
-        const imageUrl = ogData.image || TVK_FALLBACK_IMAGES[news.length % TVK_FALLBACK_IMAGES.length]
+        // Use RSS image or fallback to TVK-themed images
+        const finalImageUrl = imageUrl || TVK_FALLBACK_IMAGES[news.length % TVK_FALLBACK_IMAGES.length]
 
-        if (ogData.image) {
-          console.log(`Found: ${title.substring(0, 40)}... with OG image`)
+        if (imageUrl) {
+          console.log(`Found: ${title.substring(0, 40)}... with RSS image`)
         } else {
           console.log(`Found: ${title.substring(0, 40)}... using fallback image`)
         }
@@ -472,26 +517,26 @@ async function scrapeRSSNews(): Promise<ScrapedMedia[]> {
           cleanTitle = cleanTitle.substring(0, sourceSeparator)
         }
 
-        // Use clean title as description if no OG description
-        const description = ogData.description || cleanTitle
+        // Use RSS description or clean title as fallback
+        const finalDescription = description || cleanTitle
 
-        // Add news item with image (OG or fallback)
+        // Add news item with image (RSS or fallback)
         news.push({
           type: 'news',
           url: link,
-          thumbnail_url: imageUrl,
+          thumbnail_url: finalImageUrl,
           title: cleanTitle,
-          description: description,
+          description: finalDescription,
           source: feed.name,
           published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
         })
 
-        // Only add as separate image if we got a real OG image (not fallback)
-        if (ogData.image) {
+        // Only add as separate image if we got a real RSS image (not fallback)
+        if (imageUrl) {
           news.push({
             type: 'image',
-            url: ogData.image,
-            title: title.trim().replace(/<[^>]*>/g, ''),
+            url: imageUrl,
+            title: cleanTitle,
             source: feed.name,
             published_at: pubDate ? new Date(pubDate).toISOString() : undefined,
           })
