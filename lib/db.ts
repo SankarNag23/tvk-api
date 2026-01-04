@@ -2,7 +2,7 @@
  * Turso Database Client for TVK API
  *
  * Uses @libsql/client for serverless-compatible SQLite (Turso)
- * All tables: hero_images, news, media, tweets, members, curation_logs, settings
+ * All tables: hero_images, media, tweets, members, curation_logs, settings
  *
  * Setup:
  * 1. Create Turso account: https://turso.tech
@@ -64,25 +64,6 @@ export async function initDB(): Promise<void> {
       display_order INTEGER DEFAULT 0,
       published_at TEXT,
       expires_at TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `)
-
-  // News articles
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS news (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      url TEXT UNIQUE NOT NULL,
-      image_url TEXT,
-      source TEXT NOT NULL,
-      language TEXT DEFAULT 'en',
-      category TEXT DEFAULT 'general',
-      relevance_score INTEGER DEFAULT 50,
-      status TEXT DEFAULT 'approved',
-      published_at TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     )
@@ -156,7 +137,6 @@ export async function initDB(): Promise<void> {
 
   // Create indexes
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_hero_status ON hero_images(status, quality_score DESC)`)
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_news_status ON news(status, published_at DESC)`)
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_media_status ON media(status, relevance_score DESC)`)
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_tweets_status ON tweets(status, published_at DESC)`)
 
@@ -274,105 +254,6 @@ function rowToHeroImage(row: any): HeroImage {
     display_order: row.display_order as number,
     published_at: row.published_at as string | undefined,
     expires_at: row.expires_at as string | undefined,
-    created_at: row.created_at as string | undefined,
-    updated_at: row.updated_at as string | undefined,
-  }
-}
-
-// ============== NEWS ==============
-
-export interface NewsItem {
-  id: string
-  title: string
-  description?: string
-  url: string
-  image_url?: string
-  source: string
-  language: string
-  category: string
-  relevance_score: number
-  status: string
-  published_at?: string
-  created_at?: string
-  updated_at?: string
-}
-
-export async function insertNews(news: Omit<NewsItem, 'created_at' | 'updated_at'>): Promise<boolean> {
-  const db = getTurso()
-  try {
-    await db.execute({
-      sql: `INSERT INTO news (id, title, description, url, image_url, source, language, category, relevance_score, status, published_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(url) DO UPDATE SET
-              title = excluded.title,
-              description = excluded.description,
-              image_url = CASE
-                WHEN excluded.image_url IS NOT NULL AND excluded.image_url != '' THEN excluded.image_url
-                ELSE COALESCE(news.image_url, excluded.image_url)
-              END,
-              relevance_score = excluded.relevance_score,
-              updated_at = datetime('now')`,
-      args: [
-        news.id, news.title, news.description || null, news.url, news.image_url || null,
-        news.source, news.language, news.category, news.relevance_score, news.status,
-        news.published_at || null
-      ]
-    })
-    return true
-  } catch (err) {
-    console.error('Error inserting news:', err)
-    return false
-  }
-}
-
-export async function getNews(options: {
-  limit?: number
-  offset?: number
-  language?: string
-  category?: string
-  status?: string
-} = {}): Promise<NewsItem[]> {
-  const db = getTurso()
-  const { limit = 20, offset = 0, language, category, status = 'approved' } = options
-
-  let sql = `SELECT * FROM news WHERE status IN ('approved', 'featured')`
-  const args: any[] = []
-
-  if (language) {
-    sql += ' AND language = ?'
-    args.push(language)
-  }
-  if (category) {
-    sql += ' AND category = ?'
-    args.push(category)
-  }
-
-  sql += ' ORDER BY published_at DESC, relevance_score DESC LIMIT ? OFFSET ?'
-  args.push(limit, offset)
-
-  const result = await db.execute({ sql, args })
-  return result.rows.map(row => rowToNewsItem(row))
-}
-
-export async function newsUrlExists(url: string): Promise<boolean> {
-  const db = getTurso()
-  const result = await db.execute({ sql: 'SELECT 1 FROM news WHERE url = ?', args: [url] })
-  return result.rows.length > 0
-}
-
-function rowToNewsItem(row: any): NewsItem {
-  return {
-    id: row.id as string,
-    title: row.title as string,
-    description: row.description as string | undefined,
-    url: row.url as string,
-    image_url: row.image_url as string | undefined,
-    source: row.source as string,
-    language: row.language as string,
-    category: row.category as string,
-    relevance_score: row.relevance_score as number,
-    status: row.status as string,
-    published_at: row.published_at as string | undefined,
     created_at: row.created_at as string | undefined,
     updated_at: row.updated_at as string | undefined,
   }
@@ -610,16 +491,11 @@ export async function setSetting(key: string, value: string, description?: strin
 
 // ============== CLEANUP ==============
 
-export async function cleanupOldContent(daysOld: number = 30, minScore: number = 60): Promise<{ news: number; media: number; tweets: number }> {
+export async function cleanupOldContent(daysOld: number = 30, minScore: number = 60): Promise<{ media: number; tweets: number }> {
   const db = getTurso()
   const cutoffDate = new Date()
   cutoffDate.setDate(cutoffDate.getDate() - daysOld)
   const cutoff = cutoffDate.toISOString()
-
-  const newsResult = await db.execute({
-    sql: `DELETE FROM news WHERE published_at < ? AND relevance_score < ? AND status != 'featured'`,
-    args: [cutoff, minScore]
-  })
 
   const mediaResult = await db.execute({
     sql: `DELETE FROM media WHERE published_at < ? AND relevance_score < ? AND status != 'featured'`,
@@ -632,7 +508,6 @@ export async function cleanupOldContent(daysOld: number = 30, minScore: number =
   })
 
   return {
-    news: newsResult.rowsAffected,
     media: mediaResult.rowsAffected,
     tweets: tweetsResult.rowsAffected
   }
@@ -642,7 +517,6 @@ export async function cleanupOldContent(daysOld: number = 30, minScore: number =
 
 export async function getStats(): Promise<{
   hero_images: number
-  news: number
   media: number
   tweets: number
   last_curation: string | null
@@ -650,14 +524,12 @@ export async function getStats(): Promise<{
   const db = getTurso()
 
   const heroResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM hero_images WHERE status IN ('approved', 'featured')`, args: [] })
-  const newsResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM news WHERE status IN ('approved', 'featured')`, args: [] })
   const mediaResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM media WHERE status IN ('approved', 'featured')`, args: [] })
   const tweetsResult = await db.execute({ sql: `SELECT COUNT(*) as count FROM tweets WHERE status IN ('approved', 'featured')`, args: [] })
   const lastCuration = await getLastCurationTime()
 
   return {
     hero_images: heroResult.rows[0]?.count as number || 0,
-    news: newsResult.rows[0]?.count as number || 0,
     media: mediaResult.rows[0]?.count as number || 0,
     tweets: tweetsResult.rows[0]?.count as number || 0,
     last_curation: lastCuration
