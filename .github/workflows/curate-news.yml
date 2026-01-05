@@ -5,7 +5,12 @@ on:
     # Run every 4 hours
     - cron: '0 */4 * * *'
   workflow_dispatch:
-    # Allow manual trigger
+    inputs:
+      reset:
+        description: 'Clear all existing news before curating (use for AI Agent reset)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   curate:
@@ -17,8 +22,15 @@ jobs:
         run: |
           echo "Starting news curation at $(date)"
 
+          # Build URL with reset parameter if requested
+          API_URL="https://tvk-api.vercel.app/api/curate-news"
+          if [ "${{ github.event.inputs.reset }}" = "true" ]; then
+            API_URL="${API_URL}?reset=true"
+            echo "RESET MODE: Clearing all existing news before curating"
+          fi
+
           response=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://tvk-api.vercel.app/api/curate-news" \
+            "${API_URL}" \
             -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
             -H "Content-Type: application/json")
 

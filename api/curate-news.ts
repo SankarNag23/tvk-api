@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
+import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, clearAllNews, logCurationRun } from '../lib/db'
 
 // RSS Sources - Working Tamil news sources for TVK coverage
 const DEFAULT_RSS_SOURCES = [
@@ -329,8 +329,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const runId = `news_${Date.now()}`
   const startedAt = new Date().toISOString()
 
+  // Check for reset parameter (clear all old news before curating)
+  const shouldReset = req.query.reset === 'true' || req.body?.reset === true
+
   try {
     await initDB()
+
+    // If reset requested, clear all existing news
+    let clearedCount = 0
+    if (shouldReset) {
+      console.log('Resetting: Clearing all existing news...')
+      clearedCount = await clearAllNews()
+      console.log(`Cleared ${clearedCount} old news items`)
+    }
 
     // Sync RSS sources - deactivate old ones, add new ones
     console.log('Syncing RSS sources (deactivating old, adding new)...')
@@ -485,6 +496,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         items_added: totalAdded,
         items_skipped: totalSkipped,
         skip_reasons: skipReasons,
+        reset_cleared: shouldReset ? clearedCount : undefined,
         cleaned_up: cleanedUp
       },
       errors: errors.length > 0 ? errors : undefined

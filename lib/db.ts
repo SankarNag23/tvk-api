@@ -737,6 +737,16 @@ export async function cleanupOldNews(daysOld: number = 7): Promise<number> {
   return result.rowsAffected
 }
 
+// Clear all news (for resetting after AI Agent deployment)
+export async function clearAllNews(): Promise<number> {
+  const db = getTurso()
+  const result = await db.execute({
+    sql: `DELETE FROM news WHERE 1=1`,
+    args: []
+  })
+  return result.rowsAffected
+}
+
 function rowToNewsItem(row: any): NewsItem {
   return {
     id: row.id as string,
