@@ -2,13 +2,16 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-// Shorts Gallery API - Just paste URLs, system auto-detects platform and extracts IDs
+// Shorts Gallery API - Just paste URLs, system resolves and embeds
 
 interface RawShort {
   id: string
   url: string
   title?: string
   active?: boolean
+  // Resolved URL (cached after first resolution)
+  resolvedUrl?: string
+  reelId?: string
 }
 
 interface ProcessedShort {
@@ -33,40 +36,32 @@ function detectPlatform(url: string): 'youtube' | 'facebook' | 'twitter' | 'inst
 function extractVideoId(url: string, platform: string): string | null {
   try {
     if (platform === 'youtube') {
-      // YouTube Shorts: /shorts/VIDEO_ID
       const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]+)/)
       if (shortsMatch) return shortsMatch[1]
-      // YouTube watch: ?v=VIDEO_ID
       const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/)
       if (watchMatch) return watchMatch[1]
-      // YouTube short URL: youtu.be/VIDEO_ID
       const shortUrlMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/)
       if (shortUrlMatch) return shortUrlMatch[1]
     }
 
     if (platform === 'facebook') {
-      // Facebook share URL: /share/v/VIDEO_ID/ or /share/r/VIDEO_ID/
-      const shareMatch = url.match(/\/share\/[vr]\/([a-zA-Z0-9]+)/)
-      if (shareMatch) return shareMatch[1]
       // Facebook reel: /reel/VIDEO_ID
       const reelMatch = url.match(/\/reel\/(\d+)/)
       if (reelMatch) return reelMatch[1]
+      // Facebook share URL: /share/v/VIDEO_ID/
+      const shareMatch = url.match(/\/share\/[vr]\/([a-zA-Z0-9]+)/)
+      if (shareMatch) return shareMatch[1]
       // Facebook video: /videos/VIDEO_ID
       const videoMatch = url.match(/\/videos\/(\d+)/)
       if (videoMatch) return videoMatch[1]
-      // fb.watch short URL
-      const fbWatchMatch = url.match(/fb\.watch\/([a-zA-Z0-9]+)/)
-      if (fbWatchMatch) return fbWatchMatch[1]
     }
 
     if (platform === 'twitter') {
-      // Twitter/X: /status/STATUS_ID
       const twitterMatch = url.match(/\/status\/(\d+)/)
       if (twitterMatch) return twitterMatch[1]
     }
 
     if (platform === 'instagram') {
-      // Instagram reel: /reel/CODE/ or /p/CODE/
       const instaMatch = url.match(/\/(reel|p)\/([a-zA-Z0-9_-]+)/)
       if (instaMatch) return instaMatch[2]
     }
@@ -77,50 +72,56 @@ function extractVideoId(url: string, platform: string): string | null {
   }
 }
 
+// Resolve Facebook share URL to get actual reel ID
+async function resolveFacebookUrl(url: string): Promise<{ resolvedUrl: string; reelId: string } | null> {
+  try {
+    // Check if it's already a reel URL
+    const reelMatch = url.match(/\/reel\/(\d+)/)
+    if (reelMatch) {
+      return { resolvedUrl: url, reelId: reelMatch[1] }
+    }
+
+    // For share URLs, we need to follow the redirect
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual'
+    })
+
+    const location = response.headers.get('location')
+    if (location) {
+      const resolvedReelMatch = location.match(/\/reel\/(\d+)/)
+      if (resolvedReelMatch) {
+        return { resolvedUrl: location, reelId: resolvedReelMatch[1] }
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Failed to resolve Facebook URL:', url, error)
+    return null
+  }
+}
+
 // Generate embed URL for each platform
-function getEmbedUrl(url: string, platform: string, videoId: string): string {
+function getEmbedUrl(platform: string, videoId: string, originalUrl: string): string {
   switch (platform) {
     case 'youtube':
       return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&playsinline=1`
 
     case 'facebook':
-      // Facebook video embed plugin
-      const encodedUrl = encodeURIComponent(url)
-      return `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=280&height=500&autoplay=true&mute=true`
-
-    case 'twitter':
-      // Twitter doesn't have easy iframe embed - return original URL
-      return url
+      // Use the reel ID directly in the embed
+      // Facebook video embed for reels
+      return `https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F${videoId}&show_text=false&width=280&height=500&autoplay=true&mute=1`
 
     case 'instagram':
-      // Instagram embed
       return `https://www.instagram.com/reel/${videoId}/embed`
 
     default:
-      return url
-  }
-}
-
-// Process raw shorts into full details
-function processShort(raw: RawShort): ProcessedShort | null {
-  const platform = detectPlatform(raw.url)
-  if (!platform) return null
-
-  const videoId = extractVideoId(raw.url, platform)
-  if (!videoId) return null
-
-  return {
-    id: raw.id,
-    url: raw.url,
-    platform,
-    videoId,
-    embedUrl: getEmbedUrl(raw.url, platform, videoId),
-    title: raw.title
+      return originalUrl
   }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -134,16 +135,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawData = readFileSync(dataPath, 'utf-8')
     const data = JSON.parse(rawData)
 
-    // Process each short - auto-detect platform and extract IDs
     const processedShorts: ProcessedShort[] = []
 
     for (const raw of data.shorts) {
-      if (raw.active === false) continue // Skip inactive shorts
+      if (raw.active === false) continue
 
-      const processed = processShort(raw)
-      if (processed) {
-        processedShorts.push(processed)
+      const platform = detectPlatform(raw.url)
+      if (!platform) continue
+
+      let videoId: string | null = null
+
+      // For Facebook, resolve share URLs to get reel IDs
+      if (platform === 'facebook') {
+        // Check if we have a cached reel ID
+        if (raw.reelId) {
+          videoId = raw.reelId
+        } else {
+          const resolved = await resolveFacebookUrl(raw.url)
+          if (resolved) {
+            videoId = resolved.reelId
+          }
+        }
+      } else {
+        videoId = extractVideoId(raw.url, platform)
       }
+
+      if (!videoId) continue
+
+      processedShorts.push({
+        id: raw.id,
+        url: raw.url,
+        platform,
+        videoId,
+        embedUrl: getEmbedUrl(platform, videoId, raw.url),
+        title: raw.title
+      })
     }
 
     return res.status(200).json({
