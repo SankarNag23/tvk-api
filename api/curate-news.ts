@@ -9,6 +9,11 @@ const DEFAULT_RSS_SOURCES = [
   // News18 Tamil - has embedded images, Tamil content
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
+
+  // Google News RSS - TVK specific searches (returns historical results, needs og:image fetch)
+  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=%22TVK%22+OR+%22%E0%AE%A4%E0%AE%B5%E0%AF%86%E0%AE%95%22+OR+%22Tamilaga+Vettri+Kazhagam%22&hl=ta&gl=IN&ceid=IN:ta', category: 'google' },
+  { name: 'Google News - Vijay Politics', url: 'https://news.google.com/rss/search?q=%E0%AE%B5%E0%AE%BF%E0%AE%9C%E0%AE%AF%E0%AF%8D+%E0%AE%95%E0%AE%9F%E0%AF%8D%E0%AE%9A%E0%AE%BF+OR+%E0%AE%A4%E0%AE%B3%E0%AE%AA%E0%AE%A4%E0%AE%BF+%E0%AE%85%E0%AE%B0%E0%AE%9A%E0%AE%BF%E0%AE%AF%E0%AE%B2%E0%AF%8D&hl=ta&gl=IN&ceid=IN:ta', category: 'google' },
+  { name: 'Google News - TVK English', url: 'https://news.google.com/rss/search?q=%22Tamilaga+Vettri+Kazhagam%22+OR+%22TVK+party%22+OR+%22Vijay+political%22&hl=en-IN&gl=IN&ceid=IN:en', category: 'google' },
 ]
 
 // Groq API configuration
@@ -380,7 +385,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const fullText = `${item.title} ${item.description || ''}`
 
           // Pre-filter: Quick keyword check before AI analysis (to save API calls)
-          if (!quickKeywordCheck(fullText)) {
+          // Skip this check for Google News sources - they're already pre-filtered by search query
+          if (source.category !== 'google' && !quickKeywordCheck(fullText)) {
             skipReasons.no_keyword++
             totalSkipped++
             continue
@@ -390,9 +396,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let imageUrl = item.imageUrl
 
           if (!imageUrl) {
-            // Try og:image as fallback
+            // Try og:image as fallback (with shorter timeout for Google News)
             imageUrl = await fetchOgImage(item.link) || undefined
-            if (!imageUrl) {
+
+            // For Google News items without images, use a default TVK image
+            if (!imageUrl && source.category === 'google') {
+              imageUrl = 'https://tvk-official.vercel.app/tvk-flag.jpg'
+              console.log(`Using default image for Google News item: ${item.title.substring(0, 40)}...`)
+            } else if (!imageUrl) {
               skipReasons.image++
               totalSkipped++
               continue
