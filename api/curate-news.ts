@@ -2,17 +2,15 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, clearAllNews, logCurationRun } from '../lib/db'
 
 // RSS Sources - Working Tamil news sources for TVK coverage
+// Only using sources with proper images and direct article URLs
 const DEFAULT_RSS_SOURCES = [
   // The Hindu Tamil Nadu - has media:content images, English content about TN politics
   { name: 'The Hindu - Tamil Nadu', url: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss', category: 'politics' },
 
-  // News18 Tamil - has embedded images, Tamil content
+  // News18 Tamil - has embedded images, Tamil content (primary source)
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
-
-  // Google News RSS - TVK specific search (returns historical results)
-  // Combine all search terms in one feed to reduce API calls
-  { name: 'Google News - TVK All', url: 'https://news.google.com/rss/search?q=%22TVK%22+OR+%22Tamilaga+Vettri+Kazhagam%22+OR+%22%E0%AE%A4%E0%AE%B5%E0%AF%86%E0%AE%95%22+Vijay+party&hl=en-IN&gl=IN&ceid=IN:en', category: 'google' },
+  { name: 'News18 Tamil - Entertainment', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/entertainment.xml', category: 'politics' },
 ]
 
 // Groq API configuration
@@ -371,10 +369,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         await updateRssSourceFetched(source.url)
 
-        // Limit items for Google News to avoid timeout (AI calls are slow)
-        // Vercel hobby has 60s timeout, each AI call is ~3-5s
-        const maxItems = source.category === 'google' ? 5 : 20
-        const itemsToProcess = items.slice(0, maxItems)
+        // Limit items to avoid timeout (Vercel hobby has 60s timeout)
+        const itemsToProcess = items.slice(0, 30)
         console.log(`Processing ${itemsToProcess.length} items from ${source.name}`)
 
         for (const item of itemsToProcess) {
@@ -388,8 +384,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const fullText = `${item.title} ${item.description || ''}`
 
           // Pre-filter: Quick keyword check before AI analysis (to save API calls)
-          // Skip this check for Google News sources - they're already pre-filtered by search query
-          if (source.category !== 'google' && !quickKeywordCheck(fullText)) {
+          if (!quickKeywordCheck(fullText)) {
             skipReasons.no_keyword++
             totalSkipped++
             continue
@@ -399,17 +394,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let imageUrl = item.imageUrl
 
           if (!imageUrl) {
-            // For Google News, skip og:image fetch (too slow) and use default image
-            if (source.category === 'google') {
-              imageUrl = 'https://tvk-official.vercel.app/tvk-flag.jpg'
-            } else {
-              // Try og:image as fallback for other sources
-              imageUrl = await fetchOgImage(item.link) || undefined
-              if (!imageUrl) {
-                skipReasons.image++
-                totalSkipped++
-                continue
-              }
+            // Try og:image as fallback
+            imageUrl = await fetchOgImage(item.link) || undefined
+            if (!imageUrl) {
+              skipReasons.image++
+              totalSkipped++
+              continue
             }
           }
 
