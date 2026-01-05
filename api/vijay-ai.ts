@@ -128,32 +128,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { role: 'user', content: message }
     ]
 
-    // Call Groq API
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile', // Fast and capable
-        messages,
-        temperature: 0.7,
-        max_tokens: 1024,
-        top_p: 0.9,
-      }),
-    })
+    // Call Groq API with retry logic for rate limiting
+    let response: Response | null = null
+    let lastError: any = null
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('Groq API error:', response.status, JSON.stringify(errorData))
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages,
+            temperature: 0.7,
+            max_tokens: 512, // Reduced for faster responses
+            top_p: 0.9,
+          }),
+        })
 
-      // Handle rate limiting
-      if (response.status === 429) {
+        if (response.ok) {
+          break // Success, exit retry loop
+        }
+
+        if (response.status === 429) {
+          // Rate limited - wait and retry
+          const waitTime = (attempt + 1) * 2000 // 2s, 4s, 6s
+          console.log(`Rate limited, waiting ${waitTime}ms before retry ${attempt + 1}`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+          continue
+        }
+
+        // Other error - don't retry
+        break
+      } catch (err) {
+        lastError = err
+        console.error(`Attempt ${attempt + 1} failed:`, err)
+      }
+    }
+
+    if (!response || !response.ok) {
+      const errorData = response ? await response.json().catch(() => ({})) : {}
+      console.error('Groq API error after retries:', response?.status, JSON.stringify(errorData))
+
+      if (response?.status === 429) {
         return res.status(429).json({
           success: false,
-          error: 'Too many requests. Please wait a moment.',
-          response: 'நண்பா, கொஞ்சம் பொறுங்க! அதிக கோரிக்கைகள். சில விநாடிகளில் மீண்டும் முயற்சிக்கவும்.'
+          error: 'Too many requests',
+          response: 'நண்பா, கொஞ்சம் பொறுங்க! சில விநாடிகளில் மீண்டும் முயற்சிக்கவும்.'
         })
       }
 
