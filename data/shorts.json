@@ -1,0 +1,30 @@
+{
+  "shorts": [
+    {
+      "id": "1",
+      "platform": "youtube",
+      "url": "https://www.youtube.com/shorts/example1",
+      "videoId": "example1",
+      "title": "TVK Rally Highlights",
+      "active": true
+    },
+    {
+      "id": "2",
+      "platform": "youtube",
+      "url": "https://www.youtube.com/shorts/example2",
+      "videoId": "example2",
+      "title": "Vijay Speech Clip",
+      "active": true
+    },
+    {
+      "id": "3",
+      "platform": "youtube",
+      "url": "https://www.youtube.com/shorts/example3",
+      "videoId": "example3",
+      "title": "TVK Movement",
+      "active": true
+    }
+  ],
+  "updatedAt": "2025-01-05T00:00:00Z",
+  "instructions": "To add a short: Copy the YouTube Shorts URL, extract the video ID (the part after /shorts/), and add an entry above. Set active: false to hide without deleting."
+}
