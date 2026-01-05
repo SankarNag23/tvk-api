@@ -1,70 +1,128 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { initDB, insertNews, newsUrlExists, syncRssSources, updateRssSourceFetched, getRssSources, cleanupOldNews, logCurationRun } from '../lib/db'
 
-// RSS Sources - Google News for TVK-specific searches + News18 for broader coverage
+// RSS Sources - Working Tamil news sources for TVK coverage
 const DEFAULT_RSS_SOURCES = [
-  // Google News RSS - TVK specific searches (pre-filtered, need og:image fetch)
-  { name: 'Google News - TVK', url: 'https://news.google.com/rss/search?q=%22TVK%22+OR+%22%E0%AE%A4%E0%AE%B5%E0%AF%86%E0%AE%95%22+OR+%22Tamilaga+Vettri+Kazhagam%22&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - TVK IT Wing', url: 'https://news.google.com/rss/search?q=%22TVK+IT+Wing%22+OR+%22TVK+%E0%AE%90%E0%AE%9F%E0%AE%BF%22&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Vijay Politics', url: 'https://news.google.com/rss/search?q=%E0%AE%B5%E0%AE%BF%E0%AE%9C%E0%AE%AF%E0%AF%8D+%E0%AE%85%E0%AE%B0%E0%AE%9A%E0%AE%BF%E0%AE%AF%E0%AE%B2%E0%AF%8D+OR+%E0%AE%A4%E0%AE%B3%E0%AE%AA%E0%AE%A4%E0%AE%BF+%E0%AE%95%E0%AE%9F%E0%AF%8D%E0%AE%9A%E0%AE%BF&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
-  { name: 'Google News - Sengottaiyan', url: 'https://news.google.com/rss/search?q=%E0%AE%9A%E0%AF%86%E0%AE%99%E0%AF%8D%E0%AE%95%E0%AF%8A%E0%AE%9F%E0%AF%8D%E0%AE%9F%E0%AF%88%E0%AE%AF%E0%AE%A9%E0%AF%8D+TVK&hl=ta&gl=IN&ceid=IN:ta', category: 'tvk' },
+  // The Hindu Tamil Nadu - has media:content images, English content about TN politics
+  { name: 'The Hindu - Tamil Nadu', url: 'https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss', category: 'politics' },
 
-  // News18 Tamil - has embedded images, broader coverage (requires keyword filtering)
+  // News18 Tamil - has embedded images, Tamil content
   { name: 'News18 Tamil - TN', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/tamil-nadu.xml', category: 'politics' },
   { name: 'News18 Tamil - Politics', url: 'https://tamil.news18.com/commonfeeds/v1/tam/rss/politics.xml', category: 'politics' },
 ]
 
-// STRICT TVK Keywords - These alone are sufficient to include
-const STRICT_TVK_KEYWORDS = [
-  // Party names
-  'tvk', 'தவெக', 'tamilaga vettri kazhagam', 'தமிழக வெற்றிக் கழகம்', 'வெற்றிக் கழகம்',
-  // TVK IT Wing
-  'tvk it wing', 'tvk ஐடி விங்', 'tvk it', 'டிவிகே ஐடி',
-  // Party leaders (not Vijay - he needs context)
-  'sengottaiyan', 'செங்கொட்டையன்', 'sengottiayan',
-  'bussy anand', 'bussy ananth', 'பஸ்ஸி ஆனந்த்', 'பஸி ஆனந்த்',
-]
+// Groq API configuration
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
-// CONDITIONAL Keywords - Need political context to include
-const CONDITIONAL_KEYWORDS = [
-  'vijay', 'விஜய்', 'thalapathy', 'தளபதி', 'actor vijay'
-]
+// AI Agent: Analyze article for TVK relevance and sentiment using Groq
+interface AIAnalysisResult {
+  about_tvk: boolean
+  positive_for_tvk: boolean
+  relevance_score: number
+  reasoning: string
+}
 
-// Political context words/stems - required with conditional keywords
-// Tamil words use stems to match with suffixes (e.g., வாக்கு matches வாக்காக)
-const POLITICAL_CONTEXT = [
-  // English
-  'party', 'politic', 'rally', 'campaign', 'election', 'vote', 'votes',
-  'leader', 'chief', 'member', 'join', 'speech', 'announce', 'launch',
-  'tvk', 'tamilaga', 'vettri',
-  // Tamil stems (will match with suffixes)
-  'கட்சி', 'அரசிய', 'பேரணி', 'தேர்தல', 'வாக்', 'பிரச்சார',
-  'தலைவ', 'உறுப்பின', 'இணை', 'உரை', 'அறிவிப்', 'தொடக்க',
-  'விமர்சி', 'ஆதரவ', 'எதிர்ப்', 'கூட்ட', 'பொது', 'அரங்'
-]
+async function analyzeWithAI(title: string, description: string): Promise<AIAnalysisResult | null> {
+  const groqApiKey = process.env.GROQ_API_KEY
+  if (!groqApiKey) {
+    console.log('GROQ_API_KEY not set, skipping AI analysis')
+    return null
+  }
 
-// Negative sentiment words to filter out
-const NEGATIVE_KEYWORDS = [
-  // English
-  'arrest', 'death', 'dead', 'kill', 'murder', 'accident', 'tragedy', 'scandal',
-  'corruption', 'scam', 'fraud', 'attack', 'violence', 'protest against', 'failure',
-  'defeated', 'loss', 'crisis', 'controversy', 'allegation', 'accused', 'criminal',
-  // Tamil negative words
-  'கைது', 'மரணம்', 'இறப்பு', 'கொலை', 'விபத்து', 'ஊழல்', 'மோசடி', 'தாக்குதல்',
-  'வன்முறை', 'தோல்வி', 'சர்ச்சை', 'குற்றச்சாட்டு'
-]
+  const prompt = `You are an AI news curator for TVK (Tamilaga Vettri Kazhagam), a Tamil Nadu political party led by actor Vijay.
 
-// Positive sentiment indicators
-const POSITIVE_KEYWORDS = [
-  // English
-  'launch', 'announce', 'success', 'win', 'victory', 'support', 'rally', 'meet',
-  'celebration', 'inaugurat', 'welcome', 'join', 'growth', 'progress', 'achieve',
-  'campaign', 'speech', 'address', 'promise', 'vision', 'plan', 'initiative',
-  // Tamil positive words
-  'வெற்றி', 'தொடக்கம்', 'அறிவிப்பு', 'ஆதரவு', 'பேரணி', 'கூட்டம்', 'விழா',
-  'வரவேற்பு', 'இணைவு', 'வளர்ச்சி', 'முன்னேற்றம்', 'சாதனை', 'பிரச்சாரம்',
-  'உரை', 'திட்டம்', 'முயற்சி'
-]
+Analyze this news article:
+Title: ${title}
+Description: ${description || 'No description available'}
+
+IMPORTANT CONTEXT:
+- TVK = Tamilaga Vettri Kazhagam = தமிழக வெற்றிக் கழகம் = தவெக
+- Key people: Vijay (விஜய், Thalapathy), Sengottaiyan (செங்கொட்டையன்), Bussy Ananth (பஸ்ஸி ஆனந்த்)
+- TVK IT Wing = TVK's digital/social media team
+
+Answer these questions:
+1. Is this article PRIMARILY ABOUT TVK, Vijay's political activities, TVK IT Wing, Sengottaiyan, or Bussy Ananth?
+   - Must be the MAIN SUBJECT, not just a passing mention
+   - For Vijay: ONLY political news (party, politics, elections), NOT movie/cinema news
+
+2. Is this article POSITIVE or NEUTRAL for TVK/Vijay politically?
+   - POSITIVE: Rally success, new members, announcements, achievements, support
+   - NEUTRAL: Factual reporting without negative spin
+   - NEGATIVE: Criticism, controversy, scandals, failures, attacks, opposition criticism
+   - Words like "விமர்சி" (criticize), "தாக்கு" (attack), "சர்ச்சை" (controversy) indicate NEGATIVE
+
+Return ONLY a JSON object (no markdown, no explanation):
+{"about_tvk": true/false, "positive_for_tvk": true/false, "relevance_score": 0-100, "reasoning": "brief explanation"}`
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 200
+      }),
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (!response.ok) {
+      console.log(`Groq API error: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content?.trim()
+
+    if (!content) {
+      console.log('Empty response from Groq')
+      return null
+    }
+
+    // Parse JSON response
+    try {
+      // Remove any markdown code blocks if present
+      const jsonStr = content.replace(/```json\n?|\n?```/g, '').trim()
+      const result = JSON.parse(jsonStr)
+      return {
+        about_tvk: Boolean(result.about_tvk),
+        positive_for_tvk: Boolean(result.positive_for_tvk),
+        relevance_score: Math.min(100, Math.max(0, Number(result.relevance_score) || 0)),
+        reasoning: String(result.reasoning || '')
+      }
+    } catch (parseError) {
+      console.log('Failed to parse Groq response:', content)
+      return null
+    }
+  } catch (error: any) {
+    console.log('Groq API call failed:', error.message)
+    return null
+  }
+}
+
+// Pre-filter: Quick keyword check before AI analysis (to save API calls)
+function quickKeywordCheck(text: string): boolean {
+  const lowerText = text.toLowerCase()
+  const keywords = [
+    // Party names
+    'tvk', 'தவெக', 'tamilaga vettri', 'வெற்றிக் கழகம்', 'வெற்றி கழகம்',
+    // Leaders
+    'vijay', 'விஜய்', 'thalapathy', 'தளபதி',
+    'sengottaiyan', 'செங்கொட்டையன்',
+    'bussy', 'பஸ்ஸி', 'ஆனந்த்',
+    // IT Wing
+    'it wing', 'ஐடி விங்', 'ஐடி அணி'
+  ]
+
+  return keywords.some(k => lowerText.includes(k))
+}
+
 
 interface RssItem {
   title: string
@@ -161,62 +219,6 @@ function extractImageUrl(item: any, content: string): string | null {
   return null
 }
 
-// Check if content matches TVK keywords (strict matching)
-function matchesKeywords(text: string): string[] {
-  const lowerText = text.toLowerCase()
-  const matched: string[] = []
-
-  // Check STRICT keywords first - any match is sufficient
-  for (const keyword of STRICT_TVK_KEYWORDS) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      matched.push(keyword)
-    }
-  }
-
-  // If strict keywords found, return them
-  if (matched.length > 0) {
-    return matched
-  }
-
-  // Check CONDITIONAL keywords - need political context
-  const hasConditional = CONDITIONAL_KEYWORDS.some(k => lowerText.includes(k.toLowerCase()))
-  if (hasConditional) {
-    const hasPoliticalContext = POLITICAL_CONTEXT.some(ctx => lowerText.includes(ctx.toLowerCase()))
-    if (hasPoliticalContext) {
-      // Find which conditional keywords matched
-      for (const keyword of CONDITIONAL_KEYWORDS) {
-        if (lowerText.includes(keyword.toLowerCase())) {
-          matched.push(keyword + ' (political)')
-        }
-      }
-    }
-  }
-
-  return matched
-}
-
-// Calculate sentiment score (-1 to 1)
-function calculateSentiment(text: string): number {
-  const lowerText = text.toLowerCase()
-  let score = 0
-
-  // Check negative keywords
-  for (const keyword of NEGATIVE_KEYWORDS) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      score -= 0.3
-    }
-  }
-
-  // Check positive keywords
-  for (const keyword of POSITIVE_KEYWORDS) {
-    if (lowerText.includes(keyword.toLowerCase())) {
-      score += 0.2
-    }
-  }
-
-  // Clamp between -1 and 1
-  return Math.max(-1, Math.min(1, score))
-}
 
 // Parse RSS feed
 async function parseRssFeed(url: string, sourceName: string): Promise<RssItem[]> {
@@ -341,8 +343,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let totalFetched = 0
     let totalAdded = 0
     let totalSkipped = 0
+    let aiAnalyzed = 0
     const errors: string[] = []
-    const skipReasons = { duplicate: 0, keyword: 0, image: 0, sentiment: 0 }
+    const skipReasons = { duplicate: 0, no_keyword: 0, image: 0, not_about_tvk: 0, negative: 0, ai_error: 0 }
 
     // Process each RSS source
     for (const source of rssSources) {
@@ -365,62 +368,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           const fullText = `${item.title} ${item.description || ''}`
 
-          // For TVK category sources (Google News searches), they're pre-filtered
-          // Still run keyword matching to identify what was matched
-          let matchedKeywords: string[] = []
-          if (source.category === 'tvk') {
-            // Pre-filtered by Google search - extract what matched
-            matchedKeywords = matchesKeywords(fullText)
-            if (matchedKeywords.length === 0) {
-              // Google search matched but our keywords didn't - still include with generic tag
-              matchedKeywords = ['TVK (search)']
-            }
-          } else {
-            // For general news sources, require keyword matching
-            matchedKeywords = matchesKeywords(fullText)
-            if (matchedKeywords.length === 0) {
-              skipReasons.keyword++
-              totalSkipped++
-              continue
-            }
-          }
-
-          // Check for image
-          let imageUrl = item.imageUrl
-
-          // For Google News (category: tvk), we need to fetch og:image but limit to avoid timeout
-          // For News18 (has embedded images), only fetch if missing
-          if (!imageUrl) {
-            if (source.category === 'tvk') {
-              // Google News - skip og:image to avoid timeout
-              // These items will be excluded (no image)
-              skipReasons.image++
-              totalSkipped++
-              continue
-            } else {
-              // News18 - try og:image as fallback (should rarely need this)
-              imageUrl = await fetchOgImage(item.link) || undefined
-              if (!imageUrl) {
-                skipReasons.image++
-                totalSkipped++
-                continue
-              }
-            }
-          }
-
-          // Calculate sentiment
-          const sentimentScore = calculateSentiment(fullText)
-
-          // Skip negative news (sentiment < -0.2)
-          if (sentimentScore < -0.2) {
-            skipReasons.sentiment++
+          // Pre-filter: Quick keyword check before AI analysis (to save API calls)
+          if (!quickKeywordCheck(fullText)) {
+            skipReasons.no_keyword++
             totalSkipped++
             continue
           }
 
+          // Check for image first (before expensive AI call)
+          let imageUrl = item.imageUrl
 
-          // Calculate relevance score (50-100)
-          const relevanceScore = Math.min(100, 50 + (matchedKeywords.length * 10) + (sentimentScore * 20))
+          if (!imageUrl) {
+            // Try og:image as fallback
+            imageUrl = await fetchOgImage(item.link) || undefined
+            if (!imageUrl) {
+              skipReasons.image++
+              totalSkipped++
+              continue
+            }
+          }
+
+          // AI AGENT: Analyze with Groq for relevance and sentiment
+          console.log(`AI analyzing: ${item.title.substring(0, 50)}...`)
+          const aiResult = await analyzeWithAI(item.title, item.description || '')
+          aiAnalyzed++
+
+          if (!aiResult) {
+            // AI analysis failed - skip to be safe
+            skipReasons.ai_error++
+            totalSkipped++
+            continue
+          }
+
+          console.log(`AI result: about_tvk=${aiResult.about_tvk}, positive=${aiResult.positive_for_tvk}, score=${aiResult.relevance_score}`)
+
+          // Condition A: Must be ABOUT TVK (not just mentioning)
+          if (!aiResult.about_tvk) {
+            skipReasons.not_about_tvk++
+            totalSkipped++
+            continue
+          }
+
+          // Condition B: Must be POSITIVE for TVK (not criticism)
+          if (!aiResult.positive_for_tvk) {
+            skipReasons.negative++
+            totalSkipped++
+            continue
+          }
+
+          // Condition C: Relevance score must be >= 50
+          if (aiResult.relevance_score < 50) {
+            skipReasons.not_about_tvk++
+            totalSkipped++
+            continue
+          }
 
           // Insert into database
           const result = await insertNews({
@@ -438,9 +439,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 return new Date().toISOString()
               }
             })(),
-            keywords_matched: matchedKeywords.join(','),
-            sentiment_score: sentimentScore,
-            relevance_score: Math.round(relevanceScore),
+            keywords_matched: aiResult.reasoning,
+            sentiment_score: aiResult.positive_for_tvk ? 1 : 0,
+            relevance_score: aiResult.relevance_score,
             status: 'approved'
           })
 
@@ -480,6 +481,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stats: {
         sources_processed: rssSources.length,
         items_fetched: totalFetched,
+        ai_analyzed: aiAnalyzed,
         items_added: totalAdded,
         items_skipped: totalSkipped,
         skip_reasons: skipReasons,
