@@ -13,24 +13,15 @@ import { initDB, insertMedia, mediaUrlExists, logCurationRun, clearAllMedia } fr
  * - Runs every 4 hours via GitHub Action
  */
 
-// YouTube search queries - mix of Tamil and English
+// YouTube search queries - optimized for speed (fewer queries)
 const YOUTUBE_SEARCH_QUERIES = [
-  // Primary TVK queries
-  'TVK Tamilaga Vettri Kazhagam 2024',
-  'TVK Vijay political speech',
-  'TVK party rally Tamil Nadu',
-  'Vijay TVK latest news',
-  // Key leaders
-  'Sengottaiyan TVK speech',
-  'Bussy Anand TVK general secretary',
-  'TVK IT Wing announcement',
+  // Primary TVK queries (most effective)
+  'TVK Tamilaga Vettri Kazhagam',
+  'Vijay TVK speech rally',
+  'TVK latest news 2024',
   // Tamil queries
-  'விஜய் தவெக பேச்சு',
-  'தமிழக வெற்றிக் கழகம் செய்தி',
-  'TVK கூட்டம்',
-  // Recent/trending
-  'TVK press meet',
-  'Vijay political journey TVK',
+  'விஜய் தவெக',
+  'தமிழக வெற்றிக் கழகம்',
 ]
 
 // Keywords that indicate movie content (to filter out)
@@ -86,7 +77,7 @@ async function searchYouTube(query: string, apiKey: string): Promise<YouTubeVide
     searchUrl.searchParams.set('part', 'snippet')
     searchUrl.searchParams.set('q', query)
     searchUrl.searchParams.set('type', 'video')
-    searchUrl.searchParams.set('maxResults', '8')
+    searchUrl.searchParams.set('maxResults', '5')
     searchUrl.searchParams.set('order', 'date')
     searchUrl.searchParams.set('relevanceLanguage', 'ta')
     searchUrl.searchParams.set('regionCode', 'IN')
@@ -334,8 +325,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const videos = await searchYouTube(query, youtubeApiKey)
       allVideos.push(...videos)
 
-      // Rate limit - avoid hitting API limits
-      await new Promise(resolve => setTimeout(resolve, 200))
+      // Small delay between YouTube queries
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
 
     stats.fetched = allVideos.length
@@ -364,22 +355,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue
       }
 
-      // AI Analysis (if Groq API key is available)
+      // Use fast keyword scoring (AI is optional via ?ai=true for deep analysis)
+      const useAI = req.query.ai === 'true' && groqApiKey
       let analysis: AIAnalysisResult | null = null
-      if (groqApiKey) {
-        stats.ai_calls++
-        analysis = await analyzeWithAI(video.title, video.description, video.channelTitle, groqApiKey)
 
+      if (useAI) {
+        stats.ai_calls++
+        analysis = await analyzeWithAI(video.title, video.description, video.channelTitle, groqApiKey!)
         if (!analysis) {
           stats.ai_failures++
-          // Use fallback scoring
           analysis = fallbackScoring(video.title, video.description)
         }
-
-        // Rate limit for AI calls
-        await new Promise(resolve => setTimeout(resolve, 300))
+        // Small delay for AI rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200))
       } else {
-        // No Groq key - use fallback
+        // Fast keyword-based scoring (default)
         analysis = fallbackScoring(video.title, video.description)
       }
 
