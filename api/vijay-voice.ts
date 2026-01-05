@@ -42,10 +42,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           text: text,
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
-            stability: 0.5,
+            stability: 0.6,
             similarity_boost: 0.8,
-            style: 0.5,
-            use_speaker_boost: true
+            style: 0.4,
+            use_speaker_boost: true,
+            speed: 0.85  // Slightly slower for clarity
           }
         }),
       }
