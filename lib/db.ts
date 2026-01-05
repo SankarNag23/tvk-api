@@ -757,6 +757,16 @@ export async function clearAllMedia(): Promise<number> {
   return result.rowsAffected
 }
 
+// Clear all tweets (for resetting social media curation)
+export async function clearAllTweets(): Promise<number> {
+  const db = getTurso()
+  const result = await db.execute({
+    sql: `DELETE FROM tweets WHERE 1=1`,
+    args: []
+  })
+  return result.rowsAffected
+}
+
 function rowToNewsItem(row: any): NewsItem {
   return {
     id: row.id as string,

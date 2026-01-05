@@ -3,31 +3,62 @@ import { initDB, insertMedia, mediaUrlExists, logCurationRun, clearAllMedia } fr
 
 /**
  * POST /api/curate-media
- * Fetches and curates YouTube videos about TVK
- * Uses YouTube Data API to search and validate videos
- * Runs every 4 hours via GitHub Action
+ * AI-Powered Media Curation Agent for TVK
+ *
+ * Features:
+ * - YouTube video discovery via Data API
+ * - AI analysis with Groq for content validation
+ * - Smart deduplication by URL
+ * - Link accessibility validation
+ * - Runs every 4 hours via GitHub Action
  */
 
-// YouTube search queries for TVK content
+// YouTube search queries - mix of Tamil and English
 const YOUTUBE_SEARCH_QUERIES = [
-  'TVK Tamilaga Vettri Kazhagam',
-  'Vijay political speech TVK',
-  'TVK party rally',
-  'Thalapathy Vijay politics',
-  'Vijay TVK conference',
-  'TVK IT Wing',
-  'Sengottaiyan TVK',
-  'Bussy Anand TVK',
-  'TVK latest news',
-  'விஜய் தவெக',
-  'தமிழக வெற்றிக் கழகம்',
+  // Primary TVK queries
+  'TVK Tamilaga Vettri Kazhagam 2024',
+  'TVK Vijay political speech',
+  'TVK party rally Tamil Nadu',
+  'Vijay TVK latest news',
+  // Key leaders
+  'Sengottaiyan TVK speech',
+  'Bussy Anand TVK general secretary',
+  'TVK IT Wing announcement',
+  // Tamil queries
+  'விஜய் தவெக பேச்சு',
+  'தமிழக வெற்றிக் கழகம் செய்தி',
+  'TVK கூட்டம்',
+  // Recent/trending
+  'TVK press meet',
+  'Vijay political journey TVK',
 ]
 
-// Negative keywords to filter out (movie trailers, songs, etc.)
+// Keywords that indicate movie content (to filter out)
+const MOVIE_KEYWORDS = [
+  'trailer', 'teaser', 'song', 'movie', 'film', 'bgm', 'theme',
+  'audio', 'jukebox', 'mashup', 'promo', 'first look', 'motion poster',
+  'படம்', 'பாடல்', 'டீசர்', 'ட்ரெய்லர்',
+]
+
+// Keywords that indicate non-TVK Vijay content
+const WRONG_VIJAY_KEYWORDS = [
+  'vijay sethupathi', 'vijay devarakonda', 'vijay antony', 'vijay tv',
+  'விஜய் சேதுபதி', 'விஜய் டிவி',
+]
+
+// Keywords that indicate negative/troll content
 const NEGATIVE_KEYWORDS = [
-  'trailer', 'song', 'movie', 'film', 'teaser', 'promo',
-  'bgm', 'theme', 'audio', 'jukebox', 'mashup', 'review',
-  'reaction', 'roast', 'troll', 'meme', 'comedy'
+  'troll', 'roast', 'meme', 'comedy', 'funny', 'reaction', 'review',
+  'expose', 'scam', 'fail', 'controversy', 'against', 'slam', 'attack',
+]
+
+// Keywords that confirm TVK political content
+const TVK_POLITICAL_KEYWORDS = [
+  'tvk', 'தவெக', 'tamilaga vettri', 'வெற்றிக் கழகம்',
+  'political', 'politics', 'அரசியல்', 'party', 'கட்சி',
+  'speech', 'பேச்சு', 'rally', 'பேரணி', 'meeting', 'கூட்டம்',
+  'election', 'தேர்தல்', 'campaign', 'announce', 'அறிவிப்பு',
+  'sengottaiyan', 'செங்கொட்டையன்', 'bussy', 'anand',
 ]
 
 interface YouTubeVideo {
@@ -39,6 +70,13 @@ interface YouTubeVideo {
   publishedAt: string
 }
 
+interface AIAnalysisResult {
+  is_tvk_content: boolean
+  is_positive: boolean
+  relevance_score: number
+  reasoning: string
+}
+
 // Search YouTube using Data API
 async function searchYouTube(query: string, apiKey: string): Promise<YouTubeVideo[]> {
   const videos: YouTubeVideo[] = []
@@ -48,15 +86,16 @@ async function searchYouTube(query: string, apiKey: string): Promise<YouTubeVide
     searchUrl.searchParams.set('part', 'snippet')
     searchUrl.searchParams.set('q', query)
     searchUrl.searchParams.set('type', 'video')
-    searchUrl.searchParams.set('maxResults', '10')
+    searchUrl.searchParams.set('maxResults', '8')
     searchUrl.searchParams.set('order', 'date')
     searchUrl.searchParams.set('relevanceLanguage', 'ta')
     searchUrl.searchParams.set('regionCode', 'IN')
+    searchUrl.searchParams.set('publishedAfter', getDateMonthsAgo(3))
     searchUrl.searchParams.set('key', apiKey)
 
     const response = await fetch(searchUrl.toString())
     if (!response.ok) {
-      console.log(`YouTube API error: ${response.status}`)
+      console.log(`YouTube API error for "${query}": ${response.status}`)
       return videos
     }
 
@@ -82,30 +121,149 @@ async function searchYouTube(query: string, apiKey: string): Promise<YouTubeVide
   return videos
 }
 
-// Check if video title contains negative keywords (movie content)
-function isMovieContent(title: string, description: string): boolean {
-  const text = `${title} ${description}`.toLowerCase()
-  return NEGATIVE_KEYWORDS.some(keyword => text.includes(keyword))
+// Get ISO date string for N months ago
+function getDateMonthsAgo(months: number): string {
+  const date = new Date()
+  date.setMonth(date.getMonth() - months)
+  return date.toISOString()
 }
 
-// Check if video is about TVK/politics (not just random Vijay content)
-function isPoliticalContent(title: string, description: string): boolean {
+// Quick keyword-based pre-filter (before expensive AI calls)
+function passesQuickFilter(title: string, description: string): { pass: boolean; reason?: string } {
   const text = `${title} ${description}`.toLowerCase()
-  const politicalKeywords = [
-    'tvk', 'தவெக', 'tamilaga vettri', 'வெற்றிக் கழகம்',
-    'politic', 'அரசிய', 'party', 'கட்சி', 'speech', 'உரை',
-    'rally', 'பேரணி', 'election', 'தேர்தல', 'campaign',
-    'sengottaiyan', 'செங்கொட்டையன்', 'bussy', 'பஸ்ஸி'
-  ]
-  return politicalKeywords.some(keyword => text.includes(keyword))
+
+  // Must have some TVK/Vijay mention
+  const hasTVKMention = text.includes('tvk') || text.includes('தவெக') ||
+    text.includes('vijay') || text.includes('விஜய்') ||
+    text.includes('tamilaga') || text.includes('vettri') ||
+    text.includes('sengottaiyan') || text.includes('bussy')
+
+  if (!hasTVKMention) {
+    return { pass: false, reason: 'no_tvk_mention' }
+  }
+
+  // Filter out movie content
+  if (MOVIE_KEYWORDS.some(kw => text.includes(kw))) {
+    return { pass: false, reason: 'movie_content' }
+  }
+
+  // Filter out wrong Vijay (other actors)
+  if (WRONG_VIJAY_KEYWORDS.some(kw => text.includes(kw))) {
+    return { pass: false, reason: 'wrong_vijay' }
+  }
+
+  // Filter out negative/troll content
+  if (NEGATIVE_KEYWORDS.some(kw => text.includes(kw))) {
+    return { pass: false, reason: 'negative_content' }
+  }
+
+  return { pass: true }
+}
+
+// AI Analysis using Groq
+async function analyzeWithAI(
+  title: string,
+  description: string,
+  channelTitle: string,
+  groqApiKey: string
+): Promise<AIAnalysisResult | null> {
+  try {
+    const prompt = `You are an AI content curator for TVK (Tamilaga Vettri Kazhagam), the political party led by actor Vijay in Tamil Nadu, India.
+
+Analyze this YouTube video and determine if it should be featured on the official TVK fan website gallery.
+
+VIDEO DETAILS:
+Title: ${title}
+Description: ${description?.substring(0, 300) || 'No description'}
+Channel: ${channelTitle}
+
+EVALUATION CRITERIA:
+1. Is this video PRIMARILY about TVK, Vijay's political activities, or key TVK leaders (Sengottaiyan, Bussy Anand)?
+2. Is the content POSITIVE or NEUTRAL toward TVK? (No criticism, trolling, or negative coverage)
+3. Is this political content, NOT movie/entertainment content?
+
+RESPOND IN JSON FORMAT ONLY:
+{
+  "is_tvk_content": true/false,
+  "is_positive": true/false,
+  "relevance_score": 0-100,
+  "reasoning": "brief explanation"
+}
+
+A good TVK video would score 70-100. Movie trailers, songs, or non-political content should score 0.`
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1,
+        max_tokens: 200,
+      }),
+    })
+
+    if (!response.ok) {
+      console.log(`Groq API error: ${response.status}`)
+      return null
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content || ''
+
+    // Parse JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+
+    const result = JSON.parse(jsonMatch[0])
+    return {
+      is_tvk_content: result.is_tvk_content === true,
+      is_positive: result.is_positive === true,
+      relevance_score: Math.min(100, Math.max(0, Number(result.relevance_score) || 0)),
+      reasoning: result.reasoning || '',
+    }
+  } catch (error) {
+    console.error('AI analysis error:', error)
+    return null
+  }
+}
+
+// Fallback keyword-based scoring when AI is unavailable
+function fallbackScoring(title: string, description: string): AIAnalysisResult {
+  const text = `${title} ${description}`.toLowerCase()
+  let score = 50
+
+  // Boost for strong TVK keywords
+  if (text.includes('tvk') || text.includes('தவெக')) score += 25
+  if (text.includes('tamilaga vettri') || text.includes('வெற்றிக் கழகம்')) score += 20
+  if (text.includes('sengottaiyan') || text.includes('செங்கொட்டையன்')) score += 15
+  if (text.includes('bussy') || text.includes('anand')) score += 15
+
+  // Boost for political context
+  if (TVK_POLITICAL_KEYWORDS.some(kw => text.includes(kw))) score += 10
+
+  // Check for Vijay without clear political context
+  if ((text.includes('vijay') || text.includes('விஜய்')) && score < 60) {
+    // Only Vijay mention without TVK context - might be movie content
+    score = Math.max(score - 20, 40)
+  }
+
+  return {
+    is_tvk_content: score >= 60,
+    is_positive: true, // Assume positive if passed quick filter
+    relevance_score: Math.min(score, 85), // Cap fallback at 85
+    reasoning: 'Keyword-based analysis (AI unavailable)',
+  }
 }
 
 // Validate YouTube video is accessible
 async function validateVideo(videoId: string): Promise<boolean> {
   try {
-    // Check if embed URL is accessible
-    const embedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
-    const response = await fetch(embedUrl, { method: 'HEAD' })
+    const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
+    const response = await fetch(oembedUrl, { method: 'HEAD' })
     return response.ok
   } catch {
     return false
@@ -132,8 +290,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
-  // Check YouTube API key
+  // Check required API keys
   const youtubeApiKey = process.env.YOUTUBE_API_KEY
+  const groqApiKey = process.env.GROQ_API_KEY
   if (!youtubeApiKey) {
     return res.status(500).json({ error: 'YOUTUBE_API_KEY not configured' })
   }
@@ -145,17 +304,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     queries: 0,
     fetched: 0,
     duplicates: 0,
-    filtered_movie: 0,
-    filtered_non_political: 0,
+    filtered_quick: 0,
+    filtered_ai: 0,
     invalid: 0,
     added: 0,
+    ai_calls: 0,
+    ai_failures: 0,
   }
 
   try {
-    console.log('Starting YouTube media curation:', runId)
+    console.log('Starting AI Media Curation Agent:', runId)
     await initDB()
 
-    // Check if reset requested (clear all existing media first)
+    // Check if reset requested
     const resetParam = req.query.reset === 'true'
     if (resetParam) {
       console.log('RESET MODE: Clearing all existing media...')
@@ -174,7 +335,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       allVideos.push(...videos)
 
       // Rate limit - avoid hitting API limits
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise(resolve => setTimeout(resolve, 200))
     }
 
     stats.fetched = allVideos.length
@@ -196,15 +357,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue
       }
 
-      // Filter out movie content (trailers, songs, etc.)
-      if (isMovieContent(video.title, video.description)) {
-        stats.filtered_movie++
+      // Quick keyword filter (save AI calls)
+      const quickFilter = passesQuickFilter(video.title, video.description)
+      if (!quickFilter.pass) {
+        stats.filtered_quick++
         continue
       }
 
-      // Filter for political content only
-      if (!isPoliticalContent(video.title, video.description)) {
-        stats.filtered_non_political++
+      // AI Analysis (if Groq API key is available)
+      let analysis: AIAnalysisResult | null = null
+      if (groqApiKey) {
+        stats.ai_calls++
+        analysis = await analyzeWithAI(video.title, video.description, video.channelTitle, groqApiKey)
+
+        if (!analysis) {
+          stats.ai_failures++
+          // Use fallback scoring
+          analysis = fallbackScoring(video.title, video.description)
+        }
+
+        // Rate limit for AI calls
+        await new Promise(resolve => setTimeout(resolve, 300))
+      } else {
+        // No Groq key - use fallback
+        analysis = fallbackScoring(video.title, video.description)
+      }
+
+      // Filter based on AI analysis
+      if (!analysis.is_tvk_content || !analysis.is_positive || analysis.relevance_score < 60) {
+        stats.filtered_ai++
+        console.log(`Filtered by AI: ${video.title.substring(0, 40)}... (score: ${analysis.relevance_score})`)
         continue
       }
 
@@ -214,14 +396,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         stats.invalid++
         continue
       }
-
-      // Calculate relevance score based on title keywords
-      let relevanceScore = 60
-      const titleLower = video.title.toLowerCase()
-      if (titleLower.includes('tvk') || titleLower.includes('தவெக')) relevanceScore = 90
-      else if (titleLower.includes('tamilaga vettri') || titleLower.includes('வெற்றிக் கழகம்')) relevanceScore = 85
-      else if (titleLower.includes('vijay') && titleLower.includes('politic')) relevanceScore = 80
-      else if (titleLower.includes('speech') || titleLower.includes('rally')) relevanceScore = 75
 
       // Insert into database
       const success = await insertMedia({
@@ -235,25 +409,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         embed_url: `https://www.youtube.com/embed/${video.id}`,
         width: 1280,
         height: 720,
-        relevance_score: relevanceScore,
+        relevance_score: analysis.relevance_score,
         status: 'approved',
         published_at: video.publishedAt,
       })
 
       if (success) {
         stats.added++
-        console.log(`Added: ${video.title.substring(0, 50)}...`)
+        console.log(`Added (score ${analysis.relevance_score}): ${video.title.substring(0, 50)}...`)
       }
     }
 
     // Log curation run
     await logCurationRun({
       run_id: runId,
-      source: 'youtube',
+      source: 'youtube-ai',
       items_fetched: stats.fetched,
       items_added: stats.added,
       items_updated: 0,
-      items_skipped: stats.duplicates + stats.filtered_movie + stats.filtered_non_political + stats.invalid,
+      items_skipped: stats.duplicates + stats.filtered_quick + stats.filtered_ai + stats.invalid,
       errors: errors.length > 0 ? errors.join('; ') : undefined,
       started_at: startedAt,
       completed_at: new Date().toISOString(),
@@ -263,7 +437,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       run_id: runId,
       stats,
-      message: `Curated ${stats.fetched} videos, added ${stats.added} new videos`,
+      message: `AI curated ${stats.fetched} videos, added ${stats.added} new videos (${stats.ai_calls} AI calls, ${stats.ai_failures} fallbacks)`,
     })
 
   } catch (error: any) {
@@ -271,7 +445,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await logCurationRun({
       run_id: runId,
-      source: 'youtube',
+      source: 'youtube-ai',
       items_fetched: 0,
       items_added: 0,
       items_updated: 0,

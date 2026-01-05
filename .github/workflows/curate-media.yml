@@ -1,4 +1,4 @@
-name: Media Curation
+name: AI Media Curation
 
 on:
   schedule:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       reset:
-        description: 'Clear all existing media before curating (use for AI Agent reset)'
+        description: 'Clear all existing media before curating (fresh start)'
         required: false
         type: boolean
         default: false
@@ -15,12 +15,13 @@ on:
 jobs:
   curate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Trigger Media Curation
+      - name: Trigger AI Media Curation Agent
         run: |
-          echo "Starting YouTube media curation at $(date)"
+          echo "Starting AI-powered media curation at $(date)"
+          echo "Uses Groq LLM to analyze and score YouTube content"
 
           # Build URL with reset parameter if requested
           API_URL="https://tvk-api.vercel.app/api/curate-media"
@@ -32,18 +33,20 @@ jobs:
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "${API_URL}" \
             -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            --max-time 600)
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
 
           echo "Response code: $http_code"
-          echo "Response body: $body"
+          echo "Response body:"
+          echo "$body" | jq '.' 2>/dev/null || echo "$body"
 
           if [ "$http_code" -ne 200 ]; then
-            echo "Media curation failed with status $http_code"
+            echo "AI Media curation failed with status $http_code"
             exit 1
           fi
 
-          echo "YouTube media curation completed successfully!"
-          echo "$body" | jq '.' 2>/dev/null || echo "$body"
+          echo ""
+          echo "AI Media curation completed successfully!"
