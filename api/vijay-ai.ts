@@ -145,9 +145,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      console.error('Groq API error:', error)
-      return res.status(500).json({ error: 'AI service error' })
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Groq API error:', response.status, JSON.stringify(errorData))
+
+      // Handle rate limiting
+      if (response.status === 429) {
+        return res.status(429).json({
+          success: false,
+          error: 'Too many requests. Please wait a moment.',
+          response: 'நண்பா, கொஞ்சம் பொறுங்க! அதிக கோரிக்கைகள். சில விநாடிகளில் மீண்டும் முயற்சிக்கவும்.'
+        })
+      }
+
+      return res.status(500).json({
+        success: false,
+        error: 'AI service error',
+        response: 'மன்னிக்கவும், தற்போது பிழை. மீண்டும் முயற்சிக்கவும்.'
+      })
     }
 
     const data = await response.json() as any
