@@ -2,50 +2,73 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-// Shorts Gallery API - Serves manually curated video shorts
-// Edit data/shorts.json to add/remove shorts
+// Shorts Gallery API - Just paste URLs, system auto-detects platform and extracts IDs
 
-interface Short {
+interface RawShort {
   id: string
-  platform: 'youtube' | 'facebook' | 'twitter'
   url: string
-  videoId: string
   title?: string
-  active: boolean
+  active?: boolean
 }
 
-interface ShortsData {
-  shorts: Short[]
-  updatedAt: string
+interface ProcessedShort {
+  id: string
+  url: string
+  platform: 'youtube' | 'facebook' | 'twitter' | 'instagram'
+  videoId: string
+  embedUrl: string
+  title?: string
 }
 
-// Helper to extract video ID from various URL formats
+// Auto-detect platform from URL
+function detectPlatform(url: string): 'youtube' | 'facebook' | 'twitter' | 'instagram' | null {
+  if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube'
+  if (url.includes('facebook.com') || url.includes('fb.watch')) return 'facebook'
+  if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter'
+  if (url.includes('instagram.com')) return 'instagram'
+  return null
+}
+
+// Extract video ID from URL
 function extractVideoId(url: string, platform: string): string | null {
   try {
     if (platform === 'youtube') {
-      // YouTube Shorts: https://www.youtube.com/shorts/VIDEO_ID
-      // YouTube Regular: https://www.youtube.com/watch?v=VIDEO_ID
-      // YouTube Short URL: https://youtu.be/VIDEO_ID
+      // YouTube Shorts: /shorts/VIDEO_ID
       const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]+)/)
       if (shortsMatch) return shortsMatch[1]
-
+      // YouTube watch: ?v=VIDEO_ID
       const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/)
       if (watchMatch) return watchMatch[1]
-
+      // YouTube short URL: youtu.be/VIDEO_ID
       const shortUrlMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/)
       if (shortUrlMatch) return shortUrlMatch[1]
     }
 
     if (platform === 'facebook') {
-      // Facebook video URLs vary widely
-      const fbMatch = url.match(/\/videos\/(\d+)/) || url.match(/\/reel\/(\d+)/)
-      if (fbMatch) return fbMatch[1]
+      // Facebook share URL: /share/v/VIDEO_ID/ or /share/r/VIDEO_ID/
+      const shareMatch = url.match(/\/share\/[vr]\/([a-zA-Z0-9]+)/)
+      if (shareMatch) return shareMatch[1]
+      // Facebook reel: /reel/VIDEO_ID
+      const reelMatch = url.match(/\/reel\/(\d+)/)
+      if (reelMatch) return reelMatch[1]
+      // Facebook video: /videos/VIDEO_ID
+      const videoMatch = url.match(/\/videos\/(\d+)/)
+      if (videoMatch) return videoMatch[1]
+      // fb.watch short URL
+      const fbWatchMatch = url.match(/fb\.watch\/([a-zA-Z0-9]+)/)
+      if (fbWatchMatch) return fbWatchMatch[1]
     }
 
     if (platform === 'twitter') {
-      // Twitter/X video: https://twitter.com/user/status/STATUS_ID
+      // Twitter/X: /status/STATUS_ID
       const twitterMatch = url.match(/\/status\/(\d+)/)
       if (twitterMatch) return twitterMatch[1]
+    }
+
+    if (platform === 'instagram') {
+      // Instagram reel: /reel/CODE/ or /p/CODE/
+      const instaMatch = url.match(/\/(reel|p)\/([a-zA-Z0-9_-]+)/)
+      if (instaMatch) return instaMatch[2]
     }
 
     return null
@@ -54,99 +77,88 @@ function extractVideoId(url: string, platform: string): string | null {
   }
 }
 
+// Generate embed URL for each platform
+function getEmbedUrl(url: string, platform: string, videoId: string): string {
+  switch (platform) {
+    case 'youtube':
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&playsinline=1`
+
+    case 'facebook':
+      // Facebook video embed plugin
+      const encodedUrl = encodeURIComponent(url)
+      return `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=280&height=500&autoplay=true&mute=true`
+
+    case 'twitter':
+      // Twitter doesn't have easy iframe embed - return original URL
+      return url
+
+    case 'instagram':
+      // Instagram embed
+      return `https://www.instagram.com/reel/${videoId}/embed`
+
+    default:
+      return url
+  }
+}
+
+// Process raw shorts into full details
+function processShort(raw: RawShort): ProcessedShort | null {
+  const platform = detectPlatform(raw.url)
+  if (!platform) return null
+
+  const videoId = extractVideoId(raw.url, platform)
+  if (!videoId) return null
+
+  return {
+    id: raw.id,
+    url: raw.url,
+    platform,
+    videoId,
+    embedUrl: getEmbedUrl(raw.url, platform, videoId),
+    title: raw.title
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=60')
 
   if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
-  // GET - Return active shorts
-  if (req.method === 'GET') {
-    try {
-      const dataPath = join(process.cwd(), 'data', 'shorts.json')
-      const rawData = readFileSync(dataPath, 'utf-8')
-      const data: ShortsData = JSON.parse(rawData)
+  try {
+    const dataPath = join(process.cwd(), 'data', 'shorts.json')
+    const rawData = readFileSync(dataPath, 'utf-8')
+    const data = JSON.parse(rawData)
 
-      // Filter to only active shorts
-      const activeShorts = data.shorts.filter(s => s.active)
+    // Process each short - auto-detect platform and extract IDs
+    const processedShorts: ProcessedShort[] = []
 
-      return res.status(200).json({
-        success: true,
-        shorts: activeShorts,
-        total: activeShorts.length,
-        updatedAt: data.updatedAt
-      })
-    } catch (error) {
-      console.error('Error reading shorts:', error)
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to load shorts',
-        shorts: []
-      })
+    for (const raw of data.shorts) {
+      if (raw.active === false) continue // Skip inactive shorts
+
+      const processed = processShort(raw)
+      if (processed) {
+        processedShorts.push(processed)
+      }
     }
+
+    return res.status(200).json({
+      success: true,
+      shorts: processedShorts,
+      total: processedShorts.length,
+      updatedAt: data.updatedAt
+    })
+
+  } catch (error) {
+    console.error('Shorts API error:', error)
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to load shorts',
+      shorts: []
+    })
   }
-
-  // POST - Add a new short (protected by API key)
-  if (req.method === 'POST') {
-    const authHeader = req.headers.authorization
-    const apiKey = process.env.CURATION_API_KEY
-
-    if (!apiKey || authHeader !== `Bearer ${apiKey}`) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-
-    try {
-      const { url, platform = 'youtube', title } = req.body
-
-      if (!url) {
-        return res.status(400).json({ error: 'URL is required' })
-      }
-
-      const videoId = extractVideoId(url, platform)
-      if (!videoId) {
-        return res.status(400).json({ error: 'Could not extract video ID from URL' })
-      }
-
-      // Read current data
-      const dataPath = join(process.cwd(), 'data', 'shorts.json')
-      const rawData = readFileSync(dataPath, 'utf-8')
-      const data: ShortsData = JSON.parse(rawData)
-
-      // Check for duplicates
-      if (data.shorts.some(s => s.videoId === videoId)) {
-        return res.status(400).json({ error: 'This video is already in the shorts list' })
-      }
-
-      // Add new short
-      const newShort: Short = {
-        id: Date.now().toString(),
-        platform: platform as 'youtube' | 'facebook' | 'twitter',
-        url,
-        videoId,
-        title: title || `Short ${data.shorts.length + 1}`,
-        active: true
-      }
-
-      data.shorts.unshift(newShort) // Add to beginning
-      data.updatedAt = new Date().toISOString()
-
-      // Note: In serverless, we can't write to filesystem persistently
-      // This POST endpoint is for reference - actual editing should be done
-      // by editing the shorts.json file directly in GitHub
-
-      return res.status(200).json({
-        success: true,
-        message: 'Short added (note: edit data/shorts.json in GitHub for persistence)',
-        short: newShort
-      })
-
-    } catch (error) {
-      console.error('Error adding short:', error)
-      return res.status(500).json({ error: 'Failed to add short' })
-    }
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' })
 }
