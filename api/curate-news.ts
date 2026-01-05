@@ -125,6 +125,43 @@ function quickKeywordCheck(text: string): boolean {
   return keywords.some(k => lowerText.includes(k))
 }
 
+// Fallback keyword analysis when AI fails
+function fallbackKeywordAnalysis(title: string, description: string): AIAnalysisResult | null {
+  const text = `${title} ${description}`.toLowerCase()
+
+  // Strong TVK indicators (high confidence it's ABOUT TVK)
+  const strongTvkKeywords = ['tvk', 'தவெக', 'tamilaga vettri', 'வெற்றிக் கழகம்', 'sengottaiyan', 'செங்கொட்டையன்', 'bussy']
+
+  // Political context for Vijay (to distinguish from movie news)
+  const politicalContext = ['party', 'கட்சி', 'politic', 'அரசிய', 'election', 'தேர்தல', 'rally', 'பேரணி', 'campaign', 'vote', 'join', 'இணை']
+
+  // Negative indicators
+  const negativeKeywords = ['criticiz', 'விமர்சி', 'attack', 'தாக்கு', 'contro', 'சர்ச்சை', 'fail', 'தோல்வி', 'scandal', 'arrest', 'கைது']
+
+  // Check if it's about TVK
+  const hasStrongTvk = strongTvkKeywords.some(k => text.includes(k))
+  const hasVijay = text.includes('vijay') || text.includes('விஜய்') || text.includes('thalapathy') || text.includes('தளபதி')
+  const hasPolitical = politicalContext.some(k => text.includes(k))
+
+  // Must be about TVK (strong keyword) OR (Vijay + political context)
+  const aboutTvk = hasStrongTvk || (hasVijay && hasPolitical)
+  if (!aboutTvk) return null
+
+  // Check sentiment
+  const hasNegative = negativeKeywords.some(k => text.includes(k))
+  if (hasNegative) return null
+
+  // Calculate relevance (60-80 for fallback)
+  const relevance = hasStrongTvk ? 75 : 65
+
+  return {
+    about_tvk: true,
+    positive_for_tvk: true,
+    relevance_score: relevance,
+    reasoning: 'Fallback: Keyword match'
+  }
+}
+
 
 interface RssItem {
   title: string
@@ -415,9 +452,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           aiAnalyzed++
 
           if (!aiResult) {
-            // AI analysis failed - skip to be safe
-            skipReasons.ai_error++
-            totalSkipped++
+            // AI analysis failed - try fallback keyword analysis
+            const fallbackResult = fallbackKeywordAnalysis(item.title, item.description || '')
+            if (fallbackResult) {
+              console.log(`Using fallback for: ${item.title.substring(0, 40)}...`)
+              // Use fallback result
+              const result = await insertNews({
+                id: generateId(),
+                title: item.title,
+                description: item.description,
+                url: item.link,
+                image_url: imageUrl,
+                source_name: source.name,
+                source_url: source.url,
+                published_at: (() => {
+                  try {
+                    return item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString()
+                  } catch {
+                    return new Date().toISOString()
+                  }
+                })(),
+                keywords_matched: fallbackResult.reasoning,
+                sentiment_score: fallbackResult.positive_for_tvk ? 1 : 0,
+                relevance_score: fallbackResult.relevance_score,
+                status: 'approved'
+              })
+              if (result.success) {
+                totalAdded++
+                console.log(`Added (fallback): ${item.title.substring(0, 50)}...`)
+              }
+            } else {
+              skipReasons.ai_error++
+              totalSkipped++
+            }
             continue
           }
 
