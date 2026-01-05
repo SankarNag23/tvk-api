@@ -141,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
+            model: 'llama-3.1-8b-instant', // Faster model with better rate limits
             messages,
             temperature: 0.7,
             max_tokens: 512, // Reduced for faster responses
