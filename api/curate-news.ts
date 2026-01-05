@@ -73,7 +73,7 @@ Return ONLY a JSON object (no markdown, no explanation):
         temperature: 0.1,
         max_tokens: 200
       }),
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(15000)
     })
 
     if (!response.ok) {
@@ -415,6 +415,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
           // AI AGENT: Analyze with Groq for relevance and sentiment
           console.log(`AI analyzing: ${item.title.substring(0, 50)}...`)
+
+          // Small delay between AI calls to avoid rate limiting
+          if (aiAnalyzed > 0) {
+            await new Promise(r => setTimeout(r, 500))
+          }
+
           const aiResult = await analyzeWithAI(item.title, item.description || '')
           aiAnalyzed++
 
