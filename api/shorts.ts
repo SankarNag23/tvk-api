@@ -81,10 +81,15 @@ async function resolveFacebookUrl(url: string): Promise<{ resolvedUrl: string; r
       return { resolvedUrl: url, reelId: reelMatch[1] }
     }
 
-    // For share URLs, we need to follow the redirect
+    // For share URLs, we need to follow the redirect with browser-like headers
     const response = await fetch(url, {
-      method: 'HEAD',
-      redirect: 'manual'
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
     })
 
     const location = response.headers.get('location')
@@ -95,9 +100,22 @@ async function resolveFacebookUrl(url: string): Promise<{ resolvedUrl: string; r
       }
     }
 
+    // If redirect didn't work, try to extract from the share URL itself
+    // Facebook share URLs sometimes have format /share/v/ENCODED_ID/
+    const shareMatch = url.match(/\/share\/[vr]\/([a-zA-Z0-9]+)/)
+    if (shareMatch) {
+      // Use the share ID directly - Facebook embed might accept it
+      return { resolvedUrl: url, reelId: shareMatch[1] }
+    }
+
     return null
   } catch (error) {
     console.error('Failed to resolve Facebook URL:', url, error)
+    // Fallback: extract share ID
+    const shareMatch = url.match(/\/share\/[vr]\/([a-zA-Z0-9]+)/)
+    if (shareMatch) {
+      return { resolvedUrl: url, reelId: shareMatch[1] }
+    }
     return null
   }
 }
@@ -109,9 +127,9 @@ function getEmbedUrl(platform: string, videoId: string, originalUrl: string): st
       return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&playsinline=1`
 
     case 'facebook':
-      // Use the reel ID directly in the embed
-      // Facebook video embed for reels
-      return `https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F${videoId}&show_text=false&width=280&height=500&autoplay=true&mute=1`
+      // Use the original share URL in the embed - Facebook handles the redirect
+      const encodedUrl = encodeURIComponent(originalUrl.split('?')[0]) // Remove query params
+      return `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=280&height=500&autoplay=true&mute=1`
 
     case 'instagram':
       return `https://www.instagram.com/reel/${videoId}/embed`

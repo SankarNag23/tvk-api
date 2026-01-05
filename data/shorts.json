@@ -1,34 +1,20 @@
 {
   "shorts": [
-    {
-      "id": "1",
-      "url": "https://www.facebook.com/share/v/1DVGNUiAnA/"
-    },
-    {
-      "id": "2",
-      "url": "https://www.facebook.com/share/v/1DC2DFUVBx/"
-    },
-    {
-      "id": "3",
-      "url": "https://www.facebook.com/share/v/1C8qAfrV3U/"
-    },
-    {
-      "id": "4",
-      "url": "https://www.facebook.com/share/v/1GJx6ust6K/"
-    },
-    {
-      "id": "5",
-      "url": "https://www.facebook.com/share/v/1aGbyTpMwM/"
-    },
-    {
-      "id": "6",
-      "url": "https://www.facebook.com/share/v/1BtnXhzBwt/"
-    },
-    {
-      "id": "7",
-      "url": "https://www.facebook.com/share/v/1NrD9Nf6yc/"
-    }
+    { "id": "1", "url": "https://www.facebook.com/share/v/1DVGNUiAnA/" },
+    { "id": "2", "url": "https://www.facebook.com/share/v/1DC2DFUVBx/" },
+    { "id": "3", "url": "https://www.facebook.com/share/v/1C8qAfrV3U/" },
+    { "id": "4", "url": "https://www.facebook.com/share/v/1GJx6ust6K/" },
+    { "id": "5", "url": "https://www.facebook.com/share/v/1aGbyTpMwM/" },
+    { "id": "6", "url": "https://www.facebook.com/share/v/1BtnXhzBwt/" },
+    { "id": "7", "url": "https://www.facebook.com/share/v/1NrD9Nf6yc/" },
+    { "id": "8", "url": "https://youtu.be/PaEe7mdEr04" },
+    { "id": "9", "url": "https://www.facebook.com/share/v/1G8yRPvRCZ/" },
+    { "id": "10", "url": "https://youtube.com/shorts/7motH5b4yYU" },
+    { "id": "11", "url": "https://youtube.com/shorts/rkaTHvYewr0" },
+    { "id": "12", "url": "https://youtube.com/shorts/4dMoaqYBt3w" },
+    { "id": "13", "url": "https://youtube.com/shorts/NKmIepGyJM4" },
+    { "id": "14", "url": "https://youtube.com/shorts/9_3qZetsyYE" }
   ],
-  "updatedAt": "2025-01-05T19:30:00Z",
-  "instructions": "Just paste the full URL - YouTube, Facebook, or Twitter. The system auto-extracts video IDs."
+  "updatedAt": "2025-01-05T20:00:00Z",
+  "instructions": "Just paste the full URL - YouTube, Facebook, Twitter, Instagram. System auto-detects platform and extracts video ID."
 }
