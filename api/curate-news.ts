@@ -74,7 +74,7 @@ Return ONLY a JSON object (no markdown, no explanation):
         temperature: 0.1,
         max_tokens: 200
       }),
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(8000)
     })
 
     if (!response.ok) {
@@ -372,9 +372,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         await updateRssSourceFetched(source.url)
 
-        console.log(`Processing ${items.length} items from ${source.name}`)
+        // Limit items for Google News to avoid timeout (AI calls are slow)
+        const maxItems = source.category === 'google' ? 15 : items.length
+        const itemsToProcess = items.slice(0, maxItems)
+        console.log(`Processing ${itemsToProcess.length} items from ${source.name}`)
 
-        for (const item of items) {
+        for (const item of itemsToProcess) {
           // Check if already exists
           if (await newsUrlExists(item.link)) {
             skipReasons.duplicate++
@@ -396,17 +399,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           let imageUrl = item.imageUrl
 
           if (!imageUrl) {
-            // Try og:image as fallback (with shorter timeout for Google News)
-            imageUrl = await fetchOgImage(item.link) || undefined
-
-            // For Google News items without images, use a default TVK image
-            if (!imageUrl && source.category === 'google') {
+            // For Google News, skip og:image fetch (too slow) and use default image
+            if (source.category === 'google') {
               imageUrl = 'https://tvk-official.vercel.app/tvk-flag.jpg'
-              console.log(`Using default image for Google News item: ${item.title.substring(0, 40)}...`)
-            } else if (!imageUrl) {
-              skipReasons.image++
-              totalSkipped++
-              continue
+            } else {
+              // Try og:image as fallback for other sources
+              imageUrl = await fetchOgImage(item.link) || undefined
+              if (!imageUrl) {
+                skipReasons.image++
+                totalSkipped++
+                continue
+              }
             }
           }
 
