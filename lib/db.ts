@@ -747,6 +747,16 @@ export async function clearAllNews(): Promise<number> {
   return result.rowsAffected
 }
 
+// Clear all media (for resetting after YouTube curation agent deployment)
+export async function clearAllMedia(): Promise<number> {
+  const db = getTurso()
+  const result = await db.execute({
+    sql: `DELETE FROM media WHERE 1=1`,
+    args: []
+  })
+  return result.rowsAffected
+}
+
 function rowToNewsItem(row: any): NewsItem {
   return {
     id: row.id as string,

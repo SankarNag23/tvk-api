@@ -1,0 +1,49 @@
+name: Media Curation
+
+on:
+  schedule:
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      reset:
+        description: 'Clear all existing media before curating (use for AI Agent reset)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Trigger Media Curation
+        run: |
+          echo "Starting YouTube media curation at $(date)"
+
+          # Build URL with reset parameter if requested
+          API_URL="https://tvk-api.vercel.app/api/curate-media"
+          if [ "${{ github.event.inputs.reset }}" = "true" ]; then
+            API_URL="${API_URL}?reset=true"
+            echo "RESET MODE: Clearing all existing media before curating"
+          fi
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${API_URL}" \
+            -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response code: $http_code"
+          echo "Response body: $body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Media curation failed with status $http_code"
+            exit 1
+          fi
+
+          echo "YouTube media curation completed successfully!"
+          echo "$body" | jq '.' 2>/dev/null || echo "$body"
