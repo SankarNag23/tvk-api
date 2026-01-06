@@ -20,6 +20,7 @@ interface ProcessedShort {
   platform: 'youtube' | 'facebook' | 'twitter' | 'instagram'
   videoId: string
   embedUrl: string
+  embeddable: boolean  // false for platforms that don't support embedding share URLs
   title?: string
 }
 
@@ -180,12 +181,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (!videoId) continue
 
+      // Facebook share URLs don't work with embed plugin - mark as non-embeddable
+      const isEmbeddable = platform === 'youtube' || platform === 'instagram' ||
+        (platform === 'facebook' && raw.url.includes('/reel/'))  // Only direct reel URLs are embeddable
+
       processedShorts.push({
         id: raw.id,
         url: raw.url,
         platform,
         videoId,
         embedUrl: getEmbedUrl(platform, videoId, raw.url),
+        embeddable: isEmbeddable,
         title: raw.title
       })
     }
