@@ -1,0 +1,55 @@
+name: Social Media Curation
+
+on:
+  schedule:
+    # Run every 4 hours
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Trigger Social Media Curation
+        run: |
+          echo "Starting social media curation at $(date)"
+
+          API_URL="https://tvk-api.vercel.app/api/curate-social"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${API_URL}" \
+            -H "Authorization: Bearer ${{ secrets.CURATION_API_KEY }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response code: $http_code"
+          echo "Response body: $body"
+
+          if [ "$http_code" -ne 200 ]; then
+            echo "Curation failed with status $http_code"
+            exit 1
+          fi
+
+          echo "Social media curation completed successfully!"
+          echo "$body" | jq '.' 2>/dev/null || echo "$body"
+
+      - name: Commit updated shorts
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          if [ -n "$(git status --porcelain data/shorts.json)" ]; then
+            git add data/shorts.json
+            git commit -m "chore: Update curated shorts [skip ci]"
+            git push
+            echo "✓ Pushed updated shorts.json"
+          else
+            echo "No changes to shorts.json"
+          fi
