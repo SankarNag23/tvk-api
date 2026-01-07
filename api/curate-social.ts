@@ -253,10 +253,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       if (!analysis) {
         // If AI fails, include if it has strong TVK keywords
-        if (hasTvkKeyword) {
-          curatedShorts.push(short)
-          console.log(`✓ Added (AI unavailable, has TVK keywords): ${short.title}`)
-        }
+        curatedShorts.push(short)
+        console.log(`✓ Added (AI unavailable, has TVK keywords): ${short.title}`)
         continue
       }
 
@@ -266,8 +264,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`  - Score: ${analysis.relevance_score}`)
       console.log(`  - Reason: ${analysis.reasoning}`)
 
-      // Include if it's TVK content, positive, and scores >= 60
-      if (analysis.is_tvk_content && analysis.is_positive && analysis.relevance_score >= 60) {
+      // Include if it's TVK content, positive, and scores >= 50
+      if (analysis.is_tvk_content && analysis.is_positive && analysis.relevance_score >= 50) {
         curatedShorts.push(short)
         console.log(`✓ Added: ${short.title}`)
       } else {
